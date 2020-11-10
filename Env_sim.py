@@ -5,6 +5,7 @@ import cv2
 import rospy
 import subprocess
 import os, signal
+import numpy as np
 
 #Start roscore
 roscore_sp = subprocess.Popen(['roscore'],stdout=subprocess.PIPE)
@@ -33,12 +34,18 @@ id_offset=0
 n=0
 sleep_after_step = 0.0  #Recommended to be proportional to the map size and no. of agents (0.5 for size:(128,128) & n_agents:8); can be 0.0 for low map sizes
 
+cv2.namedWindow('Merged_Map_Observation_Agent_0')
+cv2.namedWindow('Nearby_Agents_Observation_Agent_0')
+
 while not rospy.is_shutdown():
     env.step()  #Navigation step of all agents
     print("Agent 0 Progresses: Local:", env.agent[0].local_exp_prog,"Merged:", env.agent[0].exp_prog, "Global", env.exp_prog)
-    ob_map, ob_poses = env.agent[0].observe()
-    print("Agent 0 Observes: Map_Shape:", ob_map.shape, "Locations:", ob_poses)
+    observation = env.agent[0].observe()
+    # print("Agent 0 Observes: Map_Shape:", np.max(observation[0]), "Locations_Sum:", np.sum(observation[1]))
+    print("Agent_0: Poses:", env.agent[0].last_known_pixel, "Locations_Sum:", np.sum(observation[1]))
     env.render()
+    cv2.imshow('Merged_Map_Observation_Agent_0', np.transpose(observation[0]))
+    cv2.imshow('Nearby_Agents_Observation_Agent_0', np.transpose(observation[1]))
     if cv2.waitKey(10) & 0xFF == ord('x'):
         break
     time.sleep(sleep_after_step)

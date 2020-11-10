@@ -792,6 +792,7 @@ class agent():
 		self.laser_gen()
 		#self.laser_pub = threading.Thread( target=self.laser_gen, args=() )
 		#self.laser_pub.start()
+		self.last_known_pixels_update()
 
 		return ()
 
@@ -872,8 +873,39 @@ class agent():
 		return ()
 
 	def observe(self):
-		map_network = np.reshape(self.map, (1,self.env.map_width,self.env.map_height))
-		return map_network, self.last_known_pixel
+		merged_map = np.reshape(self.map, (self.env.map_height,self.env.map_width)) * 0.005
+		# Map -1 to 0.0 & 0 to 100 as 0.5 to 1.0
+		neg_i = merged_map < 0.0
+		merged_map[~neg_i] += 0.5
+		merged_map[neg_i] = 0.0
+
+		# Transforming merged map with agents position as origin
+		col = self.agent_pixel[0]
+		row = self.agent_pixel[1]
+		width = self.env.map_width // 2
+		height = self.env.map_height // 2
+
+		transform_col = width - col
+		transform_row = height - row
+		min_col = max(col - width, 0)
+		max_col = min(col + width, self.env.map_width)
+		min_row = max(row - height, 0)
+		max_row = min(row + height, self.env.map_height)
+
+		map_network = np.full((2, self.env.map_height, self.env.map_width), 0.)
+
+		map_network[0][(min_row + transform_row):(max_row + transform_row),
+					(min_col + transform_col):(max_col + transform_col)] = merged_map[min_row:max_row, min_col:max_col]
+
+		# Nearby agents positions
+		for i in range(len(self.last_known_pixel)):
+			if i != self.agent_id and self.last_known_pixel[i][0] != -1:
+				c = self.last_known_pixel[i][0] + transform_col
+				r = self.last_known_pixel[i][1] + transform_row
+				if r >= 0 and c >= 0:
+					map_network[1][r][c] = 1.0
+
+		return map_network
 
 	def set_goal_pixel(self,x,y):
 		if not self.env.global_planner:
