@@ -41,11 +41,11 @@ while not rospy.is_shutdown():
     env.step()  #Navigation step of all agents
     print("Agent 0 Progresses: Local:", env.agent[0].local_exp_prog,"Merged:", env.agent[0].exp_prog, "Global", env.exp_prog)
     observation = env.agent[0].observe()
-    # print("Agent 0 Observes: Map_Shape:", np.max(observation[0]), "Locations_Sum:", np.sum(observation[1]))
-    print("Agent_0: Poses:", env.agent[0].last_known_pixel, "Locations_Sum:", np.sum(observation[1]))
+    # print("Agent 0 Observes: Map_Shape:", np.shape(observation[:, :,0]), "Locations_Shape:", np.shape(observation[:, :, 1]))
+    print("Agent_0: Poses:", env.agent[0].last_known_pixel, "Locations_Sum:", np.sum(observation[:, :, 1]))
     env.render()
-    cv2.imshow('Merged_Map_Observation_Agent_0', np.transpose(observation[0]))
-    cv2.imshow('Nearby_Agents_Observation_Agent_0', np.transpose(observation[1]))
+    cv2.imshow('Merged_Map_Observation_Agent_0', np.transpose(observation[:, :, 0]))
+    cv2.imshow('Nearby_Agents_Observation_Agent_0', np.transpose(observation[:, :, 1]))
     if cv2.waitKey(10) & 0xFF == ord('x'):
         break
     time.sleep(sleep_after_step)

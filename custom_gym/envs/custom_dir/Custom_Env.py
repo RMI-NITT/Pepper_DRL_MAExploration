@@ -892,10 +892,10 @@ class agent():
 		min_row = max(row - height, 0)
 		max_row = min(row + height, self.env.map_height)
 
-		map_network = np.full((2, self.env.map_height, self.env.map_width), 0.)
+		map_network = np.zeros((self.env.map_height, self.env.map_width, 2), dtype=np.float)
 
-		map_network[0][(min_row + transform_row):(max_row + transform_row),
-					(min_col + transform_col):(max_col + transform_col)] = merged_map[min_row:max_row, min_col:max_col]
+		map_network[(min_row + transform_row):(max_row + transform_row),
+				(min_col + transform_col):(max_col + transform_col), 0] = merged_map[min_row:max_row, min_col:max_col]
 
 		# Nearby agents positions
 		for i in range(len(self.last_known_pixel)):
@@ -903,7 +903,7 @@ class agent():
 				c = self.last_known_pixel[i][0] + transform_col
 				r = self.last_known_pixel[i][1] + transform_row
 				if r >= 0 and c >= 0:
-					map_network[1][r][c] = 1.0
+					map_network[r][c][1] = 1.0
 
 		return map_network
 
