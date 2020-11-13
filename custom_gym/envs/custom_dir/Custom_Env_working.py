@@ -159,7 +159,7 @@ def laser_scan(scan_ranges,laser_gen_map,agent_pos,env_size,block_side,scan_min,
 
 		
 class CustomEnv(gym.Env):
-	def __init__(self, env_id=0, size=(32,32), obstacle_density=20, n_agents=1, rrt_exp=False, rrt_mode=0, agents_exp=[0], global_map_exp=False, global_planner=False, laser_range=14.0, max_comm_dist=7.5, nav_recov_timeout=2.0, render_output=False, scaling_factor=20):
+	def __init__(self, env_id=0, size=(32,32), obstacle_density=20, n_agents=1, rrt_exp=False, rrt_mode=0, agents_exp=[0], global_map_exp=False, laser_range=14.0, max_comm_dist=7.5, nav_recov_timeout=2.0, render_output=False, scaling_factor=20):
 		print("Env_"+str(env_id)+" Initializing")
 		self.env_ns = "Env_"+str(env_id)	#Environment ROS Namespace
 
@@ -182,8 +182,8 @@ class CustomEnv(gym.Env):
 		else:
 			print("Warning: Environment Size must have a minimum value of 4. Resetting size[1] to 4.")
 			_size.append(4)
-
-		#Environment map parameters
+		#Environment map parameters	
+		
 		self.size = tuple(_size)
 		self.obstacle_density = float(obstacle_density)/100
 		self.scaling_factor = scaling_factor
@@ -205,8 +205,6 @@ class CustomEnv(gym.Env):
 		self.hect_comp_thresh = 0.975	#Hector exploration stops if (exp_prog reaches this value or above) and (the hector_exploration package returns a nav path of zero legth)
 		self.elite_thresh = 0.975		#explore_lite exploration stops if this threshold is reached
 		self.rrt_thresh = 0.975			#rrt exploration stops if this threshold is reached
-		self.hector_planner_timeout = 10  # in seconds - Time Limit for hector get_exploration_path service to return path. If timedout, then hector_exploration_node will be restarted
-		self.global_planner = global_planner
 		self.move_base_goal_tolerance=0.0				#If goal is unreachable max tolerance (in meters) to make it reachable
 		self.move_base_retry_timeout=nav_recov_timeout	#in seconds - Retries timeout on path planning failure
 		self.move_base_failed_retries=3					#Maximum times to retry for invalid goal
@@ -278,7 +276,7 @@ class CustomEnv(gym.Env):
 		self.map_network = np.full((1, self.map_height, self.map_width), -1)	#Initializing a map with zeros - denotes no frontier present
 		self.exp_prog = 0.0
 		self.sub_map = rospy.Subscriber("/" + self.env_ns + "/global_map", OccupancyGrid, self.map_sub)
-		# self.frontier_sub = rospy.Subscriber("/" + self.env_ns + "/frontier_map", OccupancyGrid, self.frontier_map_sub)
+		self.frontier_sub = rospy.Subscriber("/" + self.env_ns + "/frontier_map", OccupancyGrid, self.frontier_map_sub)
 		self.exp_prog_sub = rospy.Subscriber("/" + self.env_ns + "/occupancy_count", UInt64MultiArray, self.exp_progress)
 		#self.global_Network = Network(GLOBAL_NET_SCOPE, trainer, self.map_width,self.map_height,True, GLOBAL_NET_SCOPE)	#global_network
 
@@ -512,7 +510,6 @@ class CustomEnv(gym.Env):
 		self.global_map_exp = global_map_exp
 		self.laser_range = float(laser_range*self.block_side)
 		self.max_comm_dist = float(max_comm_dist)
-		self.global_planner = global_planner
 		self.move_base_retry_timeout=nav_recov_timeout
 
 		#Re-Assigining random starting positions for all the agents from the largest contour
@@ -527,11 +524,11 @@ class CustomEnv(gym.Env):
 		self.frontier_sub = rospy.Subscriber("/" + self.env_ns + "/frontier_map", OccupancyGrid, self.frontier_map_sub)
 		self.exp_prog_sub = rospy.Subscriber("/" + self.env_ns + "/occupancy_count", UInt64MultiArray, self.exp_progress)
 		#self.global_Network = Network(GLOBAL_NET_SCOPE, trainer, self.map_width,self.map_height,True, GLOBAL_NET_SCOPE)	#global_network
-
+		'''
 		
 		self.exp_prog_sub = rospy.Subscriber("/" + self.env_ns + "/global_map", OccupancyGrid, self.exp_progress)
-		# self.frontier_sub = rospy.Subscriber("/" + self.env_ns + "/frontier_map", OccupancyGrid, self.frontier_map_sub)
-
+		self.frontier_sub = rospy.Subscriber("/" + self.env_ns + "/frontier_map", OccupancyGrid, self.frontier_map_sub)
+		'''
 		#Relaunching Map_Merging process - Global launch
 		self.map_merge_init()
 
@@ -562,7 +559,7 @@ class CustomEnv(gym.Env):
 			self.agent[i].agent_alive=False
 
 			self.agent[i].sub_map.unregister()
-			# self.agent[i].frontier_sub.unregister()
+			self.agent[i].frontier_sub.unregister()
 			self.agent[i].exp_prog_sub.unregister()
 			#print("SIGINT VALUE: "+str(self.agent[i].gmapping_sp.pid))
 			os.kill(self.agent[i].gmapping_sp.pid , signal.SIGINT)
@@ -570,19 +567,19 @@ class CustomEnv(gym.Env):
 			if self.agent[i].active_exp == self.Exp_id['hector_exploration']:
 				del self.agent[i].hect_nav
 			#Delete move_base objects
-			if self.global_planner:
-				if self.agent[i].move_base.action_active:
-					self.agent[i].move_base.sub_goal.unregister()
-					self.agent[i].move_base.sub_cancel.unregister()
-				self.agent[i].move_base.sub_simple_goal.unregister()
-				self.agent[i].move_base.sub_global_planner.unregister()
-				self.agent[i].move_base.get_plan_srv.shutdown()
-				del self.agent[i].move_base
+			if self.agent[i].move_base.action_active:
+				self.agent[i].move_base.sub_goal.unregister()
+				self.agent[i].move_base.sub_cancel.unregister()
 
+			self.agent[i].move_base.sub_simple_goal.unregister()
+			self.agent[i].move_base.sub_global_planner.unregister()
+			self.agent[i].move_base.get_plan_srv.shutdown()
+			del self.agent[i].move_base
+			#del self.agent[i]
 		#print("SIGINT VALUE: "+str(self.map_merge_sp.pid))
 		os.kill(self.map_merge_sp.pid , signal.SIGINT)
 		self.sub_map.unregister()
-		# self.frontier_sub.unregister()
+		self.frontier_sub.unregister()
 		self.exp_prog_sub.unregister()
 		rospy.sleep(2)
 
@@ -611,7 +608,6 @@ class reward(Enum):
     COLLISION   = -0.20
     FINISHMAP  = +10.0
     COMMUNICATE = +1.0
-    LOCALMAP = +10.0
 
 class agent():
 	def __init__(self,_env,_agent_id,_init_pos):
@@ -780,19 +776,18 @@ class agent():
 		self.map_merge_service_init()
 
 		#Subscribing to map to find exploration progress
-		self.exp_prog = 0.0	#Contains the exploration progress from 0.0 to 1.0 at all times
-		self.local_exp_prog = 0.0 #Contains the exploration progress of local map (map built without communication)
+		self.exp_prog = 0.0	#Conatins the exploration progress from 0.0 to 1.0 at all times
 		self.sub_map = rospy.Subscriber("/" + self.group_ns + "/map", OccupancyGrid, self.map_sub)
-		# self.frontier_sub = rospy.Subscriber("/" + self.group_ns + "/frontier_map", OccupancyGrid, self.frontier_map_sub)
+		self.frontier_sub = rospy.Subscriber("/" + self.group_ns + "/frontier_map", OccupancyGrid, self.frontier_map_sub)
 		self.exp_prog_sub = rospy.Subscriber("/" + self.group_ns + "/occupancy_count", UInt64MultiArray, self.exp_progress)
-		self.local_exp_prog_sub = rospy.Subscriber("/" + self.group_ns + "/local_occ_count", UInt64MultiArray, self.local_exp_progress)
 		self.odom_update(self.agent_pos)	#This function is used to update to position of an agent to any given position
 		self.tf_pub_thread.start()
-		self.training = True
+		
 		#if (self.active_exp == self.env.Exp_id['explore_lite']) or (self.active_exp == self.env.Exp_id['rrt_exploration']) or (self.active_exp == self.env.Exp_id['free_navigation']):
-		if self.env.global_planner:
-			self.move_base = Move_base(self)	#Initializing object of Move_base class
-			self.move_base.feedback_pub()
+		self.training = True
+		self.move_base = Move_base(self)												#Initializing object of Move_base class
+		self.move_base.feedback_pub()
+		#Network local to the agent
 
 		if self.active_exp == self.env.Exp_id['hector_exploration']:
 			self.hect_nav = hector_navigation(self)
@@ -900,7 +895,7 @@ class agent():
 			#inputs=[]
 			#inputs[0]=local_map
 			#inputs[1]=global_map
-			self.inputs = self.observe()#np.stack((local_map,merged_map),axis =3)
+			self.inputs = np.stack((local_map,merged_map),axis =3)
 			#self.inputs = np.reshape(self.inputs, (1,self.env.map_height,self.env.map_width,2))
 			#self.inputs = np.self.inputs.astype(float)
 			
@@ -977,7 +972,8 @@ class agent():
 				#communication has to be activated
 				local_map_1 = self.map_network
 				merged_map_1 = self.env.map_network
-				self.inputs_1 = self.observe()
+				#self.inputs_1 = self.observe()
+				self.inputs_1 = np.stack((local_map_1,merged_map_1),axis =3)
 				#self.inputs_1 = np.reshape(self.inputs_1, (1,self.env.map_height,self.env.map_width,2))
 				#update should be done
 				if a == 'n':
@@ -986,10 +982,6 @@ class agent():
 					self.r +=reward.MOVE.value
 				if self.exp_prog>=0.9:
 					self.r += reward.FINISHMAP.value
-				if self.local_exp_prog>=0.9:
-					self.r += reward.LOCALMAP.value
-				else:
-					self.r += (self.local_exp_prog *10)
 				collision = 0
 				for l in range(len(self.last_known_pixel)):
 					for k in range(len(self.last_known_pixel)):
@@ -1134,10 +1126,6 @@ class agent():
 			map_size_maxy="max_y:="+str(1.5*self.env.block_side*self.env.size[1])
 			delta_arg="mapping_delta:="+str(0.10)
 			comm_range_arg="max_comm_dist:="+str(self.env.max_comm_dist*self.env.block_side)
-			if self.env.global_planner:
-				gp_arg="enable_global_planner:=true"
-			else:
-				gp_arg="enable_global_planner:=false"
 			if (self.active_exp == self.env.Exp_id['rrt_exploration']):
 				if self.env.rrt_mode == 1:
 					exp_enable="start_rrt:=false"
@@ -1245,7 +1233,6 @@ class agent():
 		self.laser_gen()
 		#self.laser_pub = threading.Thread( target=self.laser_gen, args=() )
 		#self.laser_pub.start()
-		self.last_known_pixels_update()
 
 		return ()
 
@@ -1336,46 +1323,8 @@ class agent():
 		#print("lock release")
 		#self.scan_process.close()
 		return ()
-	'''
-	def observe(self):
-		merged_map = np.reshape(self.map, (self.env.map_height,self.env.map_width)) * 0.005
-		# Map -1 to 0.0 & 0 to 100 as 0.5 to 1.0
-		neg_i = merged_map < 0.0
-		merged_map[~neg_i] += 0.5
-		merged_map[neg_i] = 0.0
 
-		# Transforming merged map with agents position as origin
-		col = self.agent_pixel[0]
-		row = self.agent_pixel[1]
-		width = self.env.map_width // 2
-		height = self.env.map_height // 2
-
-		transform_col = width - col
-		transform_row = height - row
-		min_col = max(col - width, 0)
-		max_col = min(col + width, self.env.map_width)
-		min_row = max(row - height, 0)
-		max_row = min(row + height, self.env.map_height)
-
-		map_network = np.zeros((self.env.map_height, self.env.map_width, 2), dtype=np.float)
-
-		map_network[(min_row + transform_row):(max_row + transform_row),
-				(min_col + transform_col):(max_col + transform_col), 0] = merged_map[min_row:max_row, min_col:max_col]
-
-		# Nearby agents positions
-		for i in range(len(self.last_known_pixel)):
-			if i != self.agent_id and self.last_known_pixel[i][0] != -1:
-				c = self.last_known_pixel[i][0] + transform_col
-				r = self.last_known_pixel[i][1] + transform_row
-				if r >= 0 and c >= 0:
-					map_network[r][c][1] = 1.0
-
-		return map_network
-	'''
 	def set_goal_pixel(self,x,y):
-		if not self.env.global_planner:
-			print("Exception: Can't set goal pixel. Global Planner not Activated.")
-			return ()
 		self.simple_goal.pose.position.x = (x-self.env.map_offset[0])*self.env.map_pixel_size
 		self.simple_goal.pose.position.y = (y-self.env.map_offset[1])*self.env.map_pixel_size
 
@@ -1387,21 +1336,7 @@ class agent():
 		self.simple_goal.header.seq = self.simple_goal.header.seq + 1
 		return ()
 
-	def switch_to_free_move(self):
-		if self.env.global_planner:
-			if self.active_exp != self.env.Exp_id['free_move']:
-				if self.move_base.action_active:
-					self.move_base.sub_goal.unregister()
-					self.move_base.sub_cancel.unregister()
-					self.move_base.action_active = False
-		self.active_exp = self.env.Exp_id['free_move']
-
-		return ()
-
 	def switch_to_free_nav(self):
-		if not self.env.global_planner:
-			print("Exception: Can't switch to free navigation mode. Global Planner not Activated.")
-			return ()
 		if self.active_exp != self.env.Exp_id['free_navigation']:
 			if self.move_base.action_active:
 				self.move_base.sub_goal.unregister()
@@ -1412,20 +1347,10 @@ class agent():
 		return ()
 
 	def switch_to_exp(self):
-		if not self.env.global_planner:
-			if self.env.agents_exp[self.agent_id] == 1:
-				self.hect_nav.nip = False
-				self.active_exp = self.env.Exp_id['hector_exploration']
-			elif self.env.agents_exp[self.agent_id] == 3:
-				self.active_exp = self.env.Exp_id['free_move']
-			else:
-				print("Exception: Can't switch to selected mode. Global Planner not Activated.")
-			return ()
-		if not self.move_base.action_active:
-			if not (self.env.agents_exp[self.agent_id] == 1 or self.env.agents_exp[self.agent_id] > 2):
-				self.move_base.sub_goal = rospy.Subscriber(self.move_base.ns+"/goal", MoveBaseActionGoal, self.move_base.goal_sub)
-				self.move_base.sub_cancel = rospy.Subscriber(self.move_base.ns+"/cancel", GoalID, self.move_base.cancel_sub)
-				self.move_base.action_active = True
+		if (not self.move_base.action_active):
+			self.move_base.sub_goal = rospy.Subscriber(self.move_base.ns+"/goal", MoveBaseActionGoal, self.move_base.goal_sub)
+			self.move_base.sub_cancel = rospy.Subscriber(self.move_base.ns+"/cancel", GoalID, self.move_base.cancel_sub)
+			self.move_base.action_active = True
 
 		if self.env.rrt_exp:
 			self.active_exp = self.env.Exp_id['rrt_exploration']
@@ -1434,11 +1359,9 @@ class agent():
 		elif self.env.agents_exp[self.agent_id] == 1:
 			self.hect_nav.nip = False
 			self.active_exp = self.env.Exp_id['hector_exploration']
-		elif self.env.agents_exp[self.agent_id] == 2:
-			self.active_exp = self.env.Exp_id['free_navigation']
 		else:
-			self.active_exp = self.env.Exp_id['free_move']
-
+			self.active_exp = self.env.Exp_id['free_navigation']
+		
 		return ()
 
 	def last_known_pixels_update(self):
@@ -1459,24 +1382,15 @@ class agent():
 		#print(self.map_network.shape)
 		return ()
 
-	"""
 	def frontier_map_sub(self,_map):
 		self.frontier_map = _map.data
 		#print(str(self.agent_id)+") Frontier_map obtained")
 		return ()
-	"""
 
 	def exp_progress(self,occ_topic):
 		solid_occ_count = occ_topic.data[0]
 		occupied_count = occ_topic.data[1]
 		self.exp_prog = (occupied_count+ (0.5*solid_occ_count) ) / self.env.occupiable_pixels
-		#print( str(self.agent_id)+") Agent_Progress: "+str(self.exp_prog) )
-		return ()
-
-	def local_exp_progress(self,occ_topic):
-		solid_occ_count = occ_topic.data[0]
-		occupied_count = occ_topic.data[1]
-		self.local_exp_prog = (occupied_count+ (0.5*solid_occ_count) ) / self.env.occupiable_pixels
 		#print( str(self.agent_id)+") Agent_Progress: "+str(self.exp_prog) )
 		return ()
 
