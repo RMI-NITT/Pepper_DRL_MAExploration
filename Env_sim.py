@@ -44,8 +44,8 @@ while not rospy.is_shutdown():
     # print("Agent 0 Observes: Map_Shape:", np.shape(observation[:, :,0]), "Locations_Shape:", np.shape(observation[:, :, 1]))
     print("Agent_0: Poses:", env.agent[0].last_known_pixel, "Locations_Sum:", np.sum(observation[:, :, 1]))
     env.render()
-    cv2.imshow('Merged_Map_Observation_Agent_0', np.transpose(observation[:, :, 0]))
-    cv2.imshow('Nearby_Agents_Observation_Agent_0', np.transpose(observation[:, :, 1]))
+    cv2.imshow('Merged_Map_Observation_Agent_0', np.transpose(observation[0, :, :, 0]))
+    cv2.imshow('Nearby_Agents_Observation_Agent_0', np.transpose(observation[0, :, :, 1]))
     if cv2.waitKey(10) & 0xFF == ord('x'):
         break
     time.sleep(sleep_after_step)
