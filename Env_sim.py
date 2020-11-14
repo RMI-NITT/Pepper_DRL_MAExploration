@@ -7,7 +7,7 @@ import subprocess
 import os, signal
 import numpy as np
 
-#Start roscore - hi
+#Start roscore
 roscore_sp = subprocess.Popen(['roscore'],stdout=subprocess.PIPE)
 
 #Initializing ROS Node
