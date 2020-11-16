@@ -235,7 +235,7 @@ class CustomEnv(gym.Env):
 		block_offset = (0.5*self.block_side)/self.map_pixel_size
 		self.map_offset = [0.25*self.map_width + block_offset - 1, 0.25*self.map_height + block_offset - 1]
 		self.map = [-1]*self.map_len			#Initializing a map_data with unknown pixels
-		self.frontier_map = [0]*self.map_len	#Initializing a map with zeros - denotes no frontier present
+		# self.frontier_map = [0]*self.map_len	#Initializing a map with zeros - denotes no frontier present
 		self.exp_prog = 0.0
 		self.sub_map = rospy.Subscriber("/" + self.env_ns + "/global_map", OccupancyGrid, self.map_sub)
 		# self.frontier_sub = rospy.Subscriber("/" + self.env_ns + "/frontier_map", OccupancyGrid, self.frontier_map_sub)
@@ -513,7 +513,7 @@ class agent():
 		self.goal_pos=[-1.0,-1.0]		#Position of goal set by exp_package or user as coordinates of the environment (1 unit = 1 block side) - [-1,-1] denotes unknown
 		self.goal_pixel=[-1,-1]			#Position of goal as coordinates on gmapping's map (1 unit = 1 pixel size on map) - [-1,-1] denotes unknown
 		self.map = [-1]*_env.map_len			#Initializing a map_data with unknown pixels
-		self.frontier_map = [0]*_env.map_len	#Initializing a map with zeros - denotes no frontier present
+		# self.frontier_map = [0]*_env.map_len	#Initializing a map with zeros - denotes no frontier present
 		if _env.rrt_exp:
 			self.active_exp = _env.Exp_id['rrt_exploration']
 		elif _env.agents_exp[_agent_id] == 0:
