@@ -156,8 +156,6 @@ def laser_scan(scan_ranges,laser_gen_map,agent_pos,env_size,block_side,scan_min,
 		
     return ()
 
-
-		
 class CustomEnv(gym.Env):
 	def __init__(self, env_id=0, size=(32,32), obstacle_density=20, n_agents=1, rrt_exp=False, rrt_mode=0, agents_exp=[0], global_map_exp=False, global_planner=False, laser_range=14.0, max_comm_dist=7.5, nav_recov_timeout=2.0, render_output=False, scaling_factor=20):
 		print("Env_"+str(env_id)+" Initializing")
@@ -197,7 +195,8 @@ class CustomEnv(gym.Env):
 		self.render_output = render_output
 
 		#Exploration & Navigation parameters
-		self.Exp_id = {'explore_lite':0, 'rrt_exploration':1, 'hector_exploration':2, 'free_navigation':3}	#Dictionary for labeling exploration packages
+		# Dictionary for labeling exploration packages
+		self.Exp_id = {'explore_lite':0, 'rrt_exploration':1, 'hector_exploration':2, 'free_navigation':3, 'free_move':4}
 		self.rrt_exp = rrt_exp
 		self.rrt_mode = rrt_mode
 		self.agents_exp = agents_exp
@@ -211,9 +210,7 @@ class CustomEnv(gym.Env):
 		self.move_base_retry_timeout=nav_recov_timeout	#in seconds - Retries timeout on path planning failure
 		self.move_base_failed_retries=3					#Maximum times to retry for invalid goal
 		self.global_planner_timeout=1500				#in ms - higher values are needed for larger environments bigger than 64x64 blocks
-		self.hector_planner_timeout=10	#in seconds - Time Limit for hector get_exploration_path service to return path. If timedout, then hector_exploration_node will be restarted
-		
-		
+
 		if render_output:
 			cv2.namedWindow(self.env_ns)
 
@@ -273,9 +270,7 @@ class CustomEnv(gym.Env):
 		block_offset = (0.5*self.block_side)/self.map_pixel_size
 		self.map_offset = [0.25*self.map_width + block_offset - 1, 0.25*self.map_height + block_offset - 1]
 		self.map = [-1]*self.map_len			#Initializing a map_data with unknown pixels
-		self.frontier_map = [0]*self.map_len
-		#self.map_network = [[[[-1]*self.map_width]*self.map_height]]	
-		self.map_network = np.full((1, self.map_height, self.map_width), -1)	#Initializing a map with zeros - denotes no frontier present
+		# self.frontier_map = [0]*self.map_len	#Initializing a map with zeros - denotes no frontier present
 		self.exp_prog = 0.0
 		self.sub_map = rospy.Subscriber("/" + self.env_ns + "/global_map", OccupancyGrid, self.map_sub)
 		# self.frontier_sub = rospy.Subscriber("/" + self.env_ns + "/frontier_map", OccupancyGrid, self.frontier_map_sub)
@@ -306,8 +301,6 @@ class CustomEnv(gym.Env):
 			self.publish_points()
 
 		print("Env_"+str(env_id)+" Initialized")
-	
-
 
 	def publish_points(self):
 		pub = rospy.Publisher("/" + self.env_ns + "/clicked_point", PointStamped, queue_size=10)
@@ -409,7 +402,6 @@ class CustomEnv(gym.Env):
 			self.pub_clock.publish(self._clock)
 			
 			last_time=last_time+0.01
-	#def init_network(self):
 
 	def init_agent(self,id):
 		self.agent[id] = agent( self,id,self.agents_init_poses[id] )
@@ -426,20 +418,16 @@ class CustomEnv(gym.Env):
 		return ()
 
 	def map_sub(self,_map):
-		#print("MAP SHAPE")
 		self.map = _map.data
-
-		self.map_network = np.reshape(self.map, (1,self.map_width,self.map_height))
-		#print(self.map_network.shape)
-
-		#print(self.map_network.shape)
 		return ()
 
+	"""
 	def frontier_map_sub(self,_map):
 		self.frontier_map = _map.data
 		#print("Global Frontier_map obtained")
 		return ()
-	
+	"""
+
 	def exp_progress(self,occ_topic):
 		solid_occ_count = occ_topic.data[0]
 		occupied_count = occ_topic.data[1]
@@ -502,7 +490,7 @@ class CustomEnv(gym.Env):
 			cv2.imshow(self.env_ns,output_img)
 		return ()
 
-	def reset(self, n_agents=1, rrt_exp=True, rrt_mode=0, agents_exp=[], global_map_exp=False, laser_range=14.0, max_comm_dist=7.5, nav_recov_timeout=2.0):
+	def reset(self, n_agents=1, rrt_exp=True, rrt_mode=0, agents_exp=[], global_map_exp=False, global_planner=False, laser_range=14.0, max_comm_dist=7.5, nav_recov_timeout=2.0):
 		#Remove alive agents and their child nodes
 		self.close_agents()
 		self.agents_count= n_agents
@@ -521,14 +509,7 @@ class CustomEnv(gym.Env):
 		#Re-Subscribing to global_map & frontier map
 		self.map = [-1]*self.map_len			#Initializing a map_data with unknown pixels
 		self.frontier_map = [0]*self.map_len	#Initializing a map with zeros - denotes no frontier present
-		self.map_network = np.full((1, self.map_height, self.map_width), -1)	#Initializing a map with zeros - denotes no frontier present
 		self.exp_prog = 0.0
-		self.sub_map = rospy.Subscriber("/" + self.env_ns + "/global_map", OccupancyGrid, self.map_sub)
-		self.frontier_sub = rospy.Subscriber("/" + self.env_ns + "/frontier_map", OccupancyGrid, self.frontier_map_sub)
-		self.exp_prog_sub = rospy.Subscriber("/" + self.env_ns + "/occupancy_count", UInt64MultiArray, self.exp_progress)
-		#self.global_Network = Network(GLOBAL_NET_SCOPE, trainer, self.map_width,self.map_height,True, GLOBAL_NET_SCOPE)	#global_network
-
-		
 		self.exp_prog_sub = rospy.Subscriber("/" + self.env_ns + "/global_map", OccupancyGrid, self.exp_progress)
 		# self.frontier_sub = rospy.Subscriber("/" + self.env_ns + "/frontier_map", OccupancyGrid, self.frontier_map_sub)
 
@@ -537,9 +518,6 @@ class CustomEnv(gym.Env):
 
 		#RE-CREATING AGENT OBJECTS & SPAWN THEM IN MAP
 		self.agent = [0]*self.agents_count
-				
-		
-
 		agent_init_threads=[]
 		for id in range(self.agents_count):
 			#groupLocks[id].acquire(0,"agent_"+str(id))
@@ -564,6 +542,7 @@ class CustomEnv(gym.Env):
 			self.agent[i].sub_map.unregister()
 			# self.agent[i].frontier_sub.unregister()
 			self.agent[i].exp_prog_sub.unregister()
+
 			#print("SIGINT VALUE: "+str(self.agent[i].gmapping_sp.pid))
 			os.kill(self.agent[i].gmapping_sp.pid , signal.SIGINT)
 			#Delete hect_nav objects
@@ -589,9 +568,7 @@ class CustomEnv(gym.Env):
 		# Note: agent[0] is deleted iteratively below since the agents indexes will be reduce by 1 at each delete
 		for i in range(self.agents_count):
 			del self.agent[0]
-		
-		#del self.agent[1]
-		#del self.agent[0]
+
 		print("Successully removed agents from "+self.env_ns)
 		return ()
 
@@ -642,11 +619,10 @@ class agent():
 		self.step_ret=False	 #This variable is updated during every self.step() execution. [True: (1 step of nav movement is done) or (new path is obtained)], [(False: ( (no nav step) and (no new path) ) or (goal cancelled/completed)]
 		self.goal_pos=[-1.0,-1.0]		#Position of goal set by exp_package or user as coordinates of the environment (1 unit = 1 block side) - [-1,-1] denotes unknown
 		self.goal_pixel=[-1,-1]			#Position of goal as coordinates on gmapping's map (1 unit = 1 pixel size on map) - [-1,-1] denotes unknown
-		self.map = [-1]*_env.map_len
-		self.map_network = np.full((1, _env.map_height, _env.map_width), -1)		#Initializing a map_data with unknown pixels
+		self.map = [-1]*_env.map_len			#Initializing a map_data with unknown pixels
 		self.episode_buffers, self.s1Values = [ [] for _ in range(NUM_BUFFERS) ], [ [] for _ in range(NUM_BUFFERS) ]
 		
-		self.frontier_map = [0]*_env.map_len	#Initializing a map with zeros - denotes no frontier present
+		# self.frontier_map = [0]*_env.map_len	#Initializing a map with zeros - denotes no frontier present
 		self.name = "agent_"+str(self.agent_id)
 		self.pull_global = update_target_graph(GLOBAL_NET_SCOPE, self.name)
 		if _env.rrt_exp:
@@ -655,8 +631,10 @@ class agent():
 			self.active_exp = _env.Exp_id['explore_lite']
 		elif _env.agents_exp[_agent_id] == 1:
 			self.active_exp = _env.Exp_id['hector_exploration']
-		else:
+		elif _env.agents_exp[_agent_id] == 2:
 			self.active_exp = _env.Exp_id['free_navigation']
+		else:
+			self.active_exp = _env.Exp_id['free_move']
 		print("Initializing Agent_"+str(_agent_id))
 		#Spawn agent
 		self.agent_pos=[_init_pos[0],_init_pos[1]]	#The variable that always contains the current agents position
@@ -886,8 +864,8 @@ class agent():
 				
 			self.episode_buffers, self.s1Values = [ [] for _ in range(NUM_BUFFERS) ], [ [] for _ in range(NUM_BUFFERS) ]
 			self.num_buff = 0
-			local_map = self.map_network
-			merged_map = self.env.map_network
+			# local_map = self.map_network
+			# merged_map = self.env.map_network
 			no_agents = self.env.agents_count
 			'''if self.agent_id == 1:
 				try:
@@ -975,8 +953,8 @@ class agent():
 
 
 				#communication has to be activated
-				local_map_1 = self.map_network
-				merged_map_1 = self.env.map_network
+				# local_map_1 = self.map_network
+				# merged_map_1 = self.env.map_network
 				self.inputs_1 = self.observe()
 				#self.inputs_1 = np.reshape(self.inputs_1, (1,self.env.map_height,self.env.map_width,2))
 				#update should be done
@@ -1153,7 +1131,8 @@ class agent():
 				map_topic="map_topic:=/"+self.env.env_ns+"/global_map"
 			else:
 				map_topic="map_topic:=map"
-			gmapping_args = [gml0, gml1, gml2, id_arg, env_ns, n_arg, map_size_minx, map_size_miny, map_size_maxx, map_size_maxy, delta_arg, exp_enable, map_topic]
+
+			gmapping_args = [gml0, gml1, gml2, id_arg, env_ns, n_arg, map_size_minx, map_size_miny, map_size_maxx, map_size_maxy, delta_arg, comm_range_arg, gp_arg, exp_enable, map_topic]
 			self.gmapping_sp=subprocess.Popen(gmapping_args, stdout=subprocess.PIPE, close_fds=True)
 		except:
 			pass
@@ -1357,9 +1336,9 @@ class agent():
 		min_row = max(row - height, 0)
 		max_row = min(row + height, self.env.map_height)
 
-		map_network = np.zeros((self.env.map_height, self.env.map_width, 2), dtype=np.float)
+		map_network = np.zeros((1, self.env.map_height, self.env.map_width, 2), dtype=np.float)
 
-		map_network[(min_row + transform_row):(max_row + transform_row),
+		map_network[0, (min_row + transform_row):(max_row + transform_row),
 				(min_col + transform_col):(max_col + transform_col), 0] = merged_map[min_row:max_row, min_col:max_col]
 
 		# Nearby agents positions
@@ -1368,7 +1347,7 @@ class agent():
 				c = self.last_known_pixel[i][0] + transform_col
 				r = self.last_known_pixel[i][1] + transform_row
 				if r >= 0 and c >= 0:
-					map_network[r][c][1] = 1.0
+					map_network[0][r][c][1] = 1.0
 
 		return map_network
 	'''
@@ -1455,8 +1434,6 @@ class agent():
 
 	def map_sub(self,_map):
 		self.map = _map.data
-		self.map_network = np.reshape(self.map, (1,self.env.map_width,self.env.map_height))
-		#print(self.map_network.shape)
 		return ()
 
 	"""
@@ -1734,12 +1711,12 @@ class Move_base():
 		while (self.path_received) == False:
 			time.sleep(0.001)
 			timeout = timeout - 1
-			'''
-			if timeout < 10:
+
+			if timeout < 1:
 				print("Timeout while getting path from Global Planner")
 				self.prev_goal = _goal
 				return [], False	#Denoting failure in getting path
-			'''
+
 		self.prev_goal = _goal
 		len_path = len(self.path_global)
 
