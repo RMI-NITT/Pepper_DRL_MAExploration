@@ -38,7 +38,7 @@ cv2.namedWindow('Merged_Map_Observation_Agent_0')
 cv2.namedWindow('Nearby_Agents_Observation_Agent_0')
 
 while not rospy.is_shutdown():
-    env.step()  #Navigation step of all agents
+    env.step  #Navigation step of all agents
     print("Agent 0 Progresses: Local:", env.agent[0].local_exp_prog,"Merged:", env.agent[0].exp_prog, "Global", env.exp_prog)
     observation = env.agent[0].observe()
     # print("Agent 0 Observes: Map_Shape:", np.shape(observation[:, :,0]), "Locations_Shape:", np.shape(observation[:, :, 1]))
@@ -73,7 +73,7 @@ while True:
         env.agent[n].map_with_feedback()
     elif k == ord('n'): #n for navigation
         while not rospy.is_shutdown():
-            env.step()  #Navigation step of all agents
+            env.step  #Navigation step of all agents
             env.render()
             if cv2.waitKey(10) & 0xFF == ord('x'):  #x for exit
                 break
@@ -96,7 +96,7 @@ while True:
         
         env.agent[n].set_goal_pixel(x_pixel,y_pixel)
         while not rospy.is_shutdown():
-            env.step()  #Navigation step of all agents
+            env.step  #Navigation step of all agents
             running_status=env.agent[n].step_ret    #step_ret of an agent becomes False if it has no goals to navigate to or last goal is reached (updated everytime when step() is run)
             env.render()
             if running_status == False: #running status (step_ret) of an agent becomes false even if a goal was unreachable or failed to reach (more description in __init__() of class agent)
