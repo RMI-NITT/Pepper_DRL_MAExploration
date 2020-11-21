@@ -17,11 +17,11 @@ kwargs = {  'env_id'            :   0,                  # Must be unique for eac
             'size'              :   (32,32),
             'obstacle_density'  :   20,
             'n_agents'          :   5,
-            'rrt_exp'           :   False,              # If this is True then all agents will explore with rrt only
+            'rrt_exp'           :   True,              # If this is True then all agents will explore with rrt only
             'rrt_mode'          :   0,                  # 0-deafult mode; 1-opencv frontier mode; 2-opencv with local rrt hybrid; 3 or any-opencv, global & local rrt included pro hybrid 
             'agents_exp'        :   [1,1,1,1,1],        # 0-explore_lite ; 1-hector_exploration; 2-free navigation; 3-free move(no planner) [length must be = n_agents]
             'global_map_exp'    :   True,               # If True then explore_lite and hector_exp will use merged global maps instead of local merged maps
-            'global_planner'    :   False,              # Must be True for using explore_lite, rrt or free_navigation
+            'global_planner'    :   True,              # Must be True for using explore_lite, rrt or free_navigation
             'laser_range'       :   14.0,               # Laser scan range in blocks/boxes (1 unit = 1 block)
             'max_comm_dist'     :   7.5,                # Map & last_known_poses communication range in blocks/boxes (1 unit = 1 block)
             'nav_recov_timeout' :   2.0,                # in seconds - timout for move_base to recover on path planning failure on each step (proportional to agents and map size)
@@ -37,18 +37,41 @@ sleep_after_step = 0.0  #Recommended to be proportional to the map size and no. 
 cv2.namedWindow('Merged_Map_Observation_Agent_0')
 cv2.namedWindow('Nearby_Agents_Observation_Agent_0')
 
-while not rospy.is_shutdown():
-    env.step()  #Navigation step of all agents
-    print("Agent 0 Progresses: Local:", env.agent[0].local_exp_prog,"Merged:", env.agent[0].exp_prog, "Global", env.exp_prog)
-    observation = env.agent[0].observe()
-    # print("Agent 0 Observes: Map_Shape:", np.shape(observation[:, :,0]), "Locations_Shape:", np.shape(observation[:, :, 1]))
-    print("Agent_0: Poses:", env.agent[0].last_known_pixel, "Locations_Sum:", np.sum(observation[:, :, 1]))
-    env.render()
-    cv2.imshow('Merged_Map_Observation_Agent_0', np.transpose(observation[0, :, :, 0]))
-    cv2.imshow('Nearby_Agents_Observation_Agent_0', np.transpose(observation[0, :, :, 1]))
-    if cv2.waitKey(10) & 0xFF == ord('x'):
+episode_number = 0
+quit_loop = False
+while True:
+    episode_number += 1
+    step_count = 0
+    while not rospy.is_shutdown():
+        env.step()  #Navigation step of all agents
+        print("Agent 0 Progresses: Local:", env.agent[0].local_exp_prog,"Merged:", env.agent[0].exp_prog, "Global", env.exp_prog)
+        observation = env.agent[0].observe()
+        # print("Agent 0 Observes: Map_Shape:", np.shape(observation[:, :,0]), "Locations_Shape:", np.shape(observation[:, :, 1]))
+        print("Agent_0: Poses:", env.agent[0].last_known_pixel, "Locations_Sum:", np.sum(observation[:, :, 1]))
+        env.render()
+        cv2.imshow('Merged_Map_Observation_Agent_0', np.transpose(observation[0, :, :, 0]))
+        cv2.imshow('Nearby_Agents_Observation_Agent_0', np.transpose(observation[0, :, :, 1]))
+        if cv2.waitKey(10) & 0xFF == ord('x'):
+            print("!!!X PRESSED!!!")
+            break
+        if cv2.waitKey(10) & 0xFF == 27:
+            quit_loop = True
+            break
+        time.sleep(sleep_after_step)
+        step_count += 1
+        if env.exp_prog > 0.5:
+            print("!!!50% EXPLORED!!! at STEP:", step_count)
+            break
+        elif step_count > 200:
+            print("!!!200 STEPS OVER!!!")
+            break
+    if quit_loop:
         break
-    time.sleep(sleep_after_step)
+    env.close()
+    del env
+    print("******************EPISODE", episode_number, "COMPLETED******************")
+    env = gym.make('CustomEnv-v0', **kwargs)
+
 
 while True:
     #env.step()
