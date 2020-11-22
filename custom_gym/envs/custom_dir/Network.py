@@ -14,7 +14,7 @@ from tensorflow.compat.v1 import ConfigProto
 import rospy
 import subprocess
 import os, signal
-import random
+
 RNN_SIZE = 512
 BUFFER_SIZE = 50		#no of episodes before loss update
 NUM_BUFFERS = 100
@@ -22,7 +22,6 @@ DISCOUNT_RATE = 0.95
 GRAD_CLIP = 100
 tf.reset_default_graph()
 GLOBAL_NET_SCOPE       = 'global'
-
 lr = 1e-5
 #groupLocks=[]
 trainer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
@@ -46,14 +45,10 @@ class Network():
 				if training == True:
 					self.scope = scope
 					self.trainer = trainer
-					
 					#self.time_step = 0
 					self.value,self.policy,self.state_out,self.policy_sig = self.net(2)
-					self.gradients,self.loss,self.imitation_loss = self.calculate_loss()
-
+					self.gradients,self.loss = self.calculate_loss()
 					self.tf_value = tf.summary.scalar('loss', self.loss)
-					self.saver = tf.train.Saver(max_to_keep=1)
-
 				#self.policy, self.value, self.state_out, self.state_in, self.state_init, self.valids = self._build_net(self.myinput,self.scalars,RNN_SIZE,TRAINING,a_size)
 				
 	def normalized_columns_initializer(self,std=1.0):
@@ -74,7 +69,7 @@ class Network():
 			#print(last_known_pixel.shape)
 			#self.inputs = tf.to_float(inputs)
 			self.no_agents = no_agents
-			self.no_actions = 9 #change it to 9 if diagonals are included
+			self.no_actions = 5 #change it to 9 if diagonals are included
 			#print(self.inputs.shape)
 			#self.time_step+=1
 			#weigthss shd come here..
@@ -159,18 +154,16 @@ class Network():
 			return value,policy,state_out,policy_sig
 	#@tf.function
 	def calculate_loss(self):
-		#print("******************************LOSS*******************")
+		print("******************************LOSS*******************")
 		with tf.variable_scope(str(self.scope)+'/qvalues',reuse = tf.AUTO_REUSE) and self.graph.as_default() :#and tf.GradientTape() as t:
 
-			self.a_size = 9
-			self.actions               = tf.placeholder(shape=(1,9), dtype=tf.int32)
+			self.a_size = 5
+			self.actions               = tf.placeholder(shape=(1,5), dtype=tf.int32)
 			self.actions_onehot         = tf.one_hot(self.actions, self.a_size, dtype=tf.float32)
 			self.train_valid            = tf.placeholder(dtype=tf.float32)
 			self.target_v               = tf.placeholder(tf.float32)
 			self.advantages             = tf.placeholder(dtype=tf.float32)
 			#self.policy = policy
-
-
 			print(tf.is_tensor(self.policy))
 			#self.value = value
 			self.train_value = tf.placeholder(shape=(1,1), dtype=tf.float32)
@@ -185,11 +178,11 @@ class Network():
 			self.valid_loss     = - 0.1 * tf.reduce_sum(tf.reduce_sum(tf.log(tf.clip_by_value(self.valids,1e-10,1.0)) * self.train_valid + \
 										tf.log(tf.clip_by_value(1-self.valids,1e-10,1.0)) * (1-self.train_valid), axis=1))
 
-			self.loss           = self.value_loss + self.policy_loss  - self.entropy  + self.valid_loss
-			self.optimal_actions = tf.placeholder(shape=(), dtype=tf.int32)
-			self.optimal_actions_onehot = tf.one_hot(self.optimal_actions, self.a_size, dtype=tf.float32)
-			self.imitation_loss = tf.reduce_mean(
-				tf.keras.backend.categorical_crossentropy(self.optimal_actions_onehot, self.policy))
+			self.loss           = self.value_loss + self.policy_loss  - self.entropy  + self.valid_loss 
+			#print(self.loss)
+			#print(tf.is_tensor(self.loss))
+			#graph =  graph or tf.get_default_graph()
+			#t.reset()
 			local_vars         = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, self.scope+'/qvalues')
 			#print(self.local_vars)
 			#self.gradients     = tf.gradients(self.loss, self.local_vars,unconnected_gradients='zero')
@@ -209,7 +202,8 @@ class Network():
 			self.apply_grads   = self.trainer.apply_gradients(self.gradients)
 			print(len(self.gradients))
 
-			return self.gradients,self.loss,self.imitation_loss
+			return self.gradients,self.loss
+
 localNet = Network(GLOBAL_NET_SCOPE, trainer, True, GLOBAL_NET_SCOPE)	#local_network
 
 
@@ -224,7 +218,6 @@ if __name__ == "__main__":
 	with localNet.graph.as_default():		
 		localNet.sess.run(tf.global_variables_initializer())
 		localNet.sess.run(tf.local_variables_initializer())
-		localNet.coord = tf.train.Coordinator()
 		#localNet.sess.graph.finalize()
 	#Initializing ROS Node
 	rospy.init_node("PEPPER_Environments", anonymous=True)
@@ -250,17 +243,11 @@ if __name__ == "__main__":
 	id_offset=0
 	n=0
 	sleep_after_step = 0.0  #Recommended to be proportional to the map size and no. of agents (0.5 for size:(128,128) & n_agents:8); can be 0.0 for low map sizes
-	model_count=2
+	model_count=0
 	while not rospy.is_shutdown():
 		env = gym.make('CustomEnv-v0', **kwargs)
 		model_count = model_count+1
-		gamma = 0.3
-		if random.uniform(0, 1)<gamma:
-			imitation = True
-
-		else:
-			imitation = False
-		env.step(localNet,trainer,model_count,imitation) #Navigation step of all agents
+		env.step(localNet,trainer,model_count)  #Navigation step of all agents
 		env.render()
 		env.close()
 		del env
@@ -268,3 +255,4 @@ if __name__ == "__main__":
 			break
 		time.sleep(sleep_after_step)
 	sess.close()
+
