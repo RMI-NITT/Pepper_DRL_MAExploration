@@ -39,13 +39,14 @@ import gc
 #time_step = 0
 RNN_SIZE = 512
 BUFFER_SIZE = 50		#no of episodes before loss update
-NUM_BUFFERS = 100
+
 DISCOUNT_RATE = 0.95
 GRAD_CLIP = 100
 #tf.reset_default_graph()
 GLOBAL_NET_SCOPE       = 'global'
 lr = 1e-5
 NUM_THREADS            = 4
+NUM_BUFFERS = 100*NUM_THREADS
 #groupLocks=[]
 #trainer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
 #trainer=tf.compat.v1.train.AdamOptimizer(learning_rate=lr , use_locking=False,name='Adam')
@@ -156,8 +157,10 @@ def laser_scan(scan_ranges,laser_gen_map,agent_pos,env_size,block_side,scan_min,
 		
     return ()
 
+
+		
 class CustomEnv(gym.Env):
-	def __init__(self, env_id=0, size=(32,32), obstacle_density=20, n_agents=1, rrt_exp=True, rrt_mode=0, agents_exp=[0], global_map_exp=True, global_planner=True, laser_range=14.0, max_comm_dist=7.5, nav_recov_timeout=2.0, render_output=False, scaling_factor=20):
+	def __init__(self, env_id=0, size=(32,32), obstacle_density=20, n_agents=1, rrt_exp=False, rrt_mode=0, agents_exp=[0], global_map_exp=False, laser_range=14.0, max_comm_dist=7.5, nav_recov_timeout=2.0, render_output=False, scaling_factor=20,global_planner=False):
 		print("Env_"+str(env_id)+" Initializing")
 		self.env_ns = "Env_"+str(env_id)	#Environment ROS Namespace
 
@@ -180,8 +183,8 @@ class CustomEnv(gym.Env):
 		else:
 			print("Warning: Environment Size must have a minimum value of 4. Resetting size[1] to 4.")
 			_size.append(4)
-
-		#Environment map parameters
+		#Environment map parameters	
+		
 		self.size = tuple(_size)
 		self.obstacle_density = float(obstacle_density)/100
 		self.scaling_factor = scaling_factor
@@ -301,6 +304,8 @@ class CustomEnv(gym.Env):
 			self.publish_points()
 
 		print("Env_"+str(env_id)+" Initialized")
+	
+
 
 	def publish_points(self):
 		pub = rospy.Publisher("/" + self.env_ns + "/clicked_point", PointStamped, queue_size=10)
@@ -402,6 +407,7 @@ class CustomEnv(gym.Env):
 			self.pub_clock.publish(self._clock)
 			
 			last_time=last_time+0.01
+	#def init_network(self):
 
 	def init_agent(self,id):
 		self.agent[id] = agent( self,id,self.agents_init_poses[id] )
@@ -456,15 +462,20 @@ class CustomEnv(gym.Env):
 				#assign the integer p to some varibale
 				self.local_network.saver.restore(self.local_network.sess,ckpt.model_checkpoint_path)
 		for id in range(self.workers_count):
+			print('****************************'+str(int(id/NUM_THREADS))+'*************')
 			step_t.append( threading.Thread( target = self.agent[int(id/NUM_THREADS)].step, args=() ) )
 			step_t[id].start()
 		for id in range(self.workers_count):
 			step_t[id].join()
-		'''
 		for id in range(self.agents_count):
-			summ.value.add(tag='Perf/Loss_'+str(id), simple_value=self.agent[id].loss)
+			#if imitation == True:
+			#	summ.value.add(tag='Perf/Loss_' + str(id), simple_value=self.agent[id].imitation_loss)
+			#else:
+			if imitation == False:
+				summ.value.add(tag='Perf/Loss_'+str(id), simple_value=self.agent[id].loss)
 			summ.value.add(tag='Perf/model_count'+str(id), simple_value=self.model_count)
-		'''
+
+
 		#summ.value.add(tag='Perf/Reward', simple_value=self.r)
 		#if self.episode_step_count != BUFFER_SIZE:
 		#summ.value.add(tag='Perf/number_of_steps', simple_value=self.total_steps)
@@ -520,6 +531,9 @@ class CustomEnv(gym.Env):
 
 		#RE-CREATING AGENT OBJECTS & SPAWN THEM IN MAP
 		self.agent = [0]*self.agents_count
+				
+		
+
 		agent_init_threads=[]
 		for id in range(self.agents_count):
 			#groupLocks[id].acquire(0,"agent_"+str(id))
@@ -544,7 +558,7 @@ class CustomEnv(gym.Env):
 			self.agent[i].sub_map.unregister()
 			# self.agent[i].frontier_sub.unregister()
 			self.agent[i].exp_prog_sub.unregister()
-
+			self.agent[i].local_exp_prog_sub.unregister()
 			#print("SIGINT VALUE: "+str(self.agent[i].gmapping_sp.pid))
 			os.kill(self.agent[i].gmapping_sp.pid , signal.SIGINT)
 			#Delete hect_nav objects
@@ -570,7 +584,9 @@ class CustomEnv(gym.Env):
 		# Note: agent[0] is deleted iteratively below since the agents indexes will be reduce by 1 at each delete
 		for i in range(self.agents_count):
 			del self.agent[0]
-
+		
+		#del self.agent[1]
+		#del self.agent[0]
 		print("Successully removed agents from "+self.env_ns)
 		return ()
 
@@ -624,7 +640,7 @@ class agent():
 		self.goal_pixel=[-1,-1]			#Position of goal as coordinates on gmapping's map (1 unit = 1 pixel size on map) - [-1,-1] denotes unknown
 		self.map = [-1]*_env.map_len			#Initializing a map_data with unknown pixels
 		self.episode_buffers, self.s1Values = [ [] for _ in range(NUM_BUFFERS) ], [ [] for _ in range(NUM_BUFFERS) ]
-		
+
 		# self.frontier_map = [0]*_env.map_len	#Initializing a map with zeros - denotes no frontier present
 		self.name = "agent_"+str(self.agent_id)
 		self.pull_global = update_target_graph(GLOBAL_NET_SCOPE, self.name)
@@ -789,41 +805,6 @@ class agent():
 		self.groupLock.release(int(self.lock_bool),self.name)
 		self.groupLock.acquire(int(not self.lock_bool),self.name)
 		self.lock_bool=not self.lock_bool
-	
-	def observe(self):
-		merged_map = np.reshape(self.map, (self.env.map_height,self.env.map_width)) * 0.005
-		# Map -1 to 0.0 & 0 to 100 as 0.5 to 1.0
-		neg_i = merged_map < 0.0
-		merged_map[~neg_i] += 0.5
-		merged_map[neg_i] = 0.0
-
-		# Transforming merged map with agents position as origin
-		col = self.agent_pixel[0]
-		row = self.agent_pixel[1]
-		width = self.env.map_width // 2
-		height = self.env.map_height // 2
-
-		transform_col = width - col
-		transform_row = height - row
-		min_col = max(col - width, 0)
-		max_col = min(col + width, self.env.map_width)
-		min_row = max(row - height, 0)
-		max_row = min(row + height, self.env.map_height)
-
-		map_network = np.full((2, self.env.map_height, self.env.map_width), 0.)
-
-		map_network[0][(min_row + transform_row):(max_row + transform_row),
-					(min_col + transform_col):(max_col + transform_col)] = merged_map[min_row:max_row, min_col:max_col]
-
-		# Nearby agents positions
-		for i in range(len(self.last_known_pixel)):
-			if i != self.agent_id and self.last_known_pixel[i][0] != -1:
-				c = self.last_known_pixel[i][0] + transform_col
-				r = self.last_known_pixel[i][1] + transform_row
-				if r >= 0 and c >= 0:
-					map_network[1][r][c] = 1.0
-
-		return map_network
 	'''
 	def observe(self):
 		merged_map = np.reshape(self.map, (self.env.map_height,self.env.map_width)) * 0.005
@@ -893,10 +874,10 @@ class agent():
 			#global_step = get_or_create_global_step()
 
 			#self.Network = Network(self.name, trainer, self.env.map_width,self.env.map_height,self.training, GLOBAL_NET_SCOPE)	#local_network
-
+			
 
 		#model = Network(self.name, trainer, self.env.map_width,self.env.map_height,self.training, GLOBAL_NET_SCOPE)
-
+		#saver = tf.train.Saver(max_to_keep=1)
 
 		self.episode_step_count = 0
 		self.total_steps = 0
@@ -976,7 +957,7 @@ class agent():
 					else:
 						a='n'
 
-				elif k == self.policy[0,4]:
+				else:
 					a='n'
 
 
@@ -1317,9 +1298,28 @@ class agent():
 
 		return()
 
+	def imitation_loss(self):
+		curr = self.agent_pos
+		self.action = np.zeros((1, 5))
+		if self.prev[0] - curr[0] == 1:
+			self.action[0, 1] = 1  # u
+
+		elif self.prev[0] - curr[0] == -1:
+			self.action[0, 2] = 1  # d
+		elif self.prev[1] - curr[1] == 1:
+			self.action[0, 3] = 1  # l
+		elif self.prev[1] - curr[1] == -1:
+			self.action[0, 4] = 1  # r
+
+		# print(action)
+		self.call_network(self.env.local_network, self.env.imitation)
+		return()
 
 	def step(self):
-		'''if self.active_exp == self.env.Exp_id['free_navigation']:
+		lock = threading.Lock()
+		lock.acquire()
+		self.prev = self.agent_pos
+		if self.active_exp == self.env.Exp_id['free_navigation']:
 			self.step_ret = self.move_base.step()
 			return ()
 		elif (self.active_exp == self.env.Exp_id['explore_lite']) or (self.active_exp == self.env.Exp_id['rrt_exploration']):
@@ -1334,58 +1334,29 @@ class agent():
 				if self.env.exp_prog > self.env.rrt_thresh:
 					self.exp_completed = True
 			if not self.exp_completed:
-				self.step_ret = self.move_base.step()	#Returns True only if agent moved a step (Returns True even if a new path was calculated succesfully)
-				return ()
+					self.step_ret = self.move_base.step()	#Returns True only if agent moved a step (Returns True even if a new path was calculated succesfully)
+					self.imitation_loss()
+			return ()
 			#else:
 			#	print(str(self.agent_id)+") Exp_Completed")
 		elif self.active_exp == self.env.Exp_id['hector_exploration']:
 			if not self.exp_completed:
-				self.step_ret = self.hect_nav.step()		#Returns True only if agent moved a step (Returns True even if a new path was calculated succesfully)
+				self.step_ret = self.hect_nav.step()
+				self.imitation_loss()#Returns True only if agent moved a step (Returns True even if a new path was calculated succesfully)
 				return ()
-		'''
-		#else:
-		#self.synchronize()
-		lock = threading.Lock()
-		lock.acquire()
-
-		if self.active_exp == self.env.Exp_id['rrt_exploration']:
-			if self.env.exp_prog > self.env.rrt_thresh:
-					self.exp_completed = True
-			if not self.exp_completed:
-				prev = self.agent_pos
-				self.step_ret = self.move_base.step()	#Returns True only if agent moved a step (Returns True even if a new path was calculated succesfully)
-				curr = self.agent_pos
-				self.action = np.zeros((1,5))
-				if prev[0]-curr[0]==1:
-					self.action[0,1] = 1 #u
-
-				elif prev[0]-curr[0]==-1:
-					self.action[0,2] = 1 #d
-				elif prev[1]-curr[1]==1:
-					self.action[0,3] = 1 #l
-				elif prev[1]-curr[1]==-1:
-					self.action[0,4] = 1 #r
-
-				#print(action)
-				self.call_network(self.env.local_network,self.env.imitation)
-				#return ()
-		#lock.release()
-
-		#lock = threading.Lock()
-		#lock.acquire()
-		#print(self.episode_step_count)
-		self.total_steps = 0
-		self.call_network(self.env.local_network)
-		print(self.exp_prog)
-		if self.exp_prog >=0.8:
-			print("------------------------------SUCCESS "+str(int(self.env.model_count))+"-------------------------------------")
-		else:
-			print("----------------------------FAIL "+str(int(self.env.model_count))+"---------------------")
+		elif self.active_exp == self.env.Exp_id['free_move']:
+			# ENTER THE CODE FOR RL HERE
+			self.total_steps = 0
+			self.call_network(self.env.local_network)
+			print(self.exp_prog)
+			if self.exp_prog >= 0.8:
+				print("------------------------------SUCCESS " + str(
+					int(self.env.model_count)) + "-------------------------------------")
+			else:
+				print("----------------------------FAIL " + str(int(self.env.model_count)) + "---------------------")
+			self.step_ret = True
+			return ()
 		lock.release()
-		
-		#print("lock release")
-		#self.scan_process.close()
-
 		return ()
 
 
@@ -1410,9 +1381,9 @@ class agent():
 		min_row = max(row - height, 0)
 		max_row = min(row + height, self.env.map_height)
 
-		map_network = np.zeros((1, self.env.map_height, self.env.map_width, 2), dtype=np.float)
+		map_network = np.zeros((self.env.map_height, self.env.map_width, 2), dtype=np.float)
 
-		map_network[0, (min_row + transform_row):(max_row + transform_row),
+		map_network[(min_row + transform_row):(max_row + transform_row),
 				(min_col + transform_col):(max_col + transform_col), 0] = merged_map[min_row:max_row, min_col:max_col]
 
 		# Nearby agents positions
@@ -1421,7 +1392,7 @@ class agent():
 				c = self.last_known_pixel[i][0] + transform_col
 				r = self.last_known_pixel[i][1] + transform_row
 				if r >= 0 and c >= 0:
-					map_network[0][r][c][1] = 1.0
+					map_network[r][c][1] = 1.0
 
 		return map_network
 	'''
@@ -1891,7 +1862,7 @@ class Move_base():
 			del path[0]	#This deletion is done since the first point in path is just the current position of bot
 		#print(str(self.bot.agent_id)+") "+str(self.bot.agent_pos)+" ) "+str(path))
 		return path[:], True		#Return path and mark success
-	
+
 	def goal_reached(self):
 		self.nip=False
 	
@@ -2090,8 +2061,6 @@ class hector_navigation():
 				if abs(Del_x) >= abs(Del_y):
 					x_step = float(Del_x)/abs(Del_x)
 					y_step = float(Del_y)/abs(Del_x)
-					if x_step >0 and y_step >0:
-						print("diagonal")
 					for j in range(abs(Del_x)):
 						x_pos = x_pos + x_step
 						y_pos = y_pos + y_step

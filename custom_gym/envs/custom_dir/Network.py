@@ -22,7 +22,6 @@ DISCOUNT_RATE = 0.95
 GRAD_CLIP = 100
 tf.reset_default_graph()
 GLOBAL_NET_SCOPE       = 'global'
-
 lr = 1e-5
 #groupLocks=[]
 trainer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
@@ -46,7 +45,6 @@ class Network():
 				if training == True:
 					self.scope = scope
 					self.trainer = trainer
-					
 					#self.time_step = 0
 					self.value,self.policy,self.state_out,self.policy_sig = self.net(2)
 					self.gradients,self.loss,self.imitation_loss = self.calculate_loss()
@@ -159,7 +157,7 @@ class Network():
 			return value,policy,state_out,policy_sig
 	#@tf.function
 	def calculate_loss(self):
-		#print("******************************LOSS*******************")
+		print("******************************LOSS*******************")
 		with tf.variable_scope(str(self.scope)+'/qvalues',reuse = tf.AUTO_REUSE) and self.graph.as_default() :#and tf.GradientTape() as t:
 
 			self.a_size = 9
@@ -169,8 +167,6 @@ class Network():
 			self.target_v               = tf.placeholder(tf.float32)
 			self.advantages             = tf.placeholder(dtype=tf.float32)
 			#self.policy = policy
-
-
 			print(tf.is_tensor(self.policy))
 			#self.value = value
 			self.train_value = tf.placeholder(shape=(1,1), dtype=tf.float32)
@@ -228,23 +224,23 @@ if __name__ == "__main__":
 		#localNet.sess.graph.finalize()
 	#Initializing ROS Node
 	rospy.init_node("PEPPER_Environments", anonymous=True)
-
-	kwargs = {  'env_id'            :   0,                  # Must be unique for each parallely running environment
+	'''kwargs = {  'env_id'            :   0,                  # Must be unique for each parallely running environment
 		    'size'              :   (32,32),
 		    'obstacle_density'  :   20,
 		    'n_agents'          :   2,
-		    'rrt_exp'           :   True,              # If this is True then all agents will explore with rrt only
+		    'rrt_exp'           :   False,              # If this is True then all agents will explore with rrt only
 		    'rrt_mode'          :   0,                  # 0-deafult mode; 1-opencv frontier mode; 2-opencv with local rrt hybrid; 3 or any-opencv, global & local rrt included pro hybrid 
-		    'agents_exp'        :   [0],        # 0-explore_lite ; 1-hector_exploration; 2 or any - free navigation [length must be = n_agents]
+		    'agents_exp'        :   [3,3],        # 0-explore_lite ; 1-hector_exploration; 2 or any - free navigation [length must be = n_agents]
 		    'global_map_exp'    :   True,               # If True then explore_lite and hector_exp will use merged global maps instead of local merged maps
 		    'laser_range'       :   14.0,               # Laser scan range in blocks/boxes (1 unit = 1 block)
 		    'max_comm_dist'     :   7.5,                # Map & last_known_poses communication range in blocks/boxes (1 unit = 1 block)
 		    'nav_recov_timeout' :   2.0,                # in seconds - timout for move_base to recover on path planning failure on each step (proportional to agents and map size)
 		    'render_output'     :   True,
 		    'scaling_factor'    :   20,
+			'global_planner'	: False,
             #'session'           :   sess,           
 				}                 # Size (in px) of each block in rendered cv2 window
-
+	'''
 	#env = gym.make('CustomEnv-v0', **kwargs)
 	#time.sleep(15)
 	id_offset=0
@@ -252,14 +248,113 @@ if __name__ == "__main__":
 	sleep_after_step = 0.0  #Recommended to be proportional to the map size and no. of agents (0.5 for size:(128,128) & n_agents:8); can be 0.0 for low map sizes
 	model_count=2
 	while not rospy.is_shutdown():
-		env = gym.make('CustomEnv-v0', **kwargs)
-		model_count = model_count+1
 		gamma = 0.3
+		gamma1 = 0.5
+		gamma2 = 0.3
+		gamma3 = 0.2
 		if random.uniform(0, 1)<gamma:
 			imitation = True
+			r = random.uniform(0,1)
+			if r>gamma1:
+				print("****************HECTOR************************")
+				kwargs = {'env_id': 0,  # Must be unique for each parallely running environment
+						  'size': (32, 32),
+						  'obstacle_density': 20,
+						  'n_agents': 2,
+						  'rrt_exp': False,  # If this is True then all agents will explore with rrt only
+						  'rrt_mode': 0,
+						  # 0-deafult mode; 1-opencv frontier mode; 2-opencv with local rrt hybrid; 3 or any-opencv, global & local rrt included pro hybrid
+						  'agents_exp': [2,2],
+						  # 0-explore_lite ; 1-hector_exploration; 2 or any - free navigation [length must be = n_agents]
+						  'global_map_exp': True,
+						  # If True then explore_lite and hector_exp will use merged global maps instead of local merged maps
+						  'laser_range': 14.0,  # Laser scan range in blocks/boxes (1 unit = 1 block)
+						  'max_comm_dist': 7.5,
+						  # Map & last_known_poses communication range in blocks/boxes (1 unit = 1 block)
+						  'nav_recov_timeout': 2.0,
+						  # in seconds - timout for move_base to recover on path planning failure on each step (proportional to agents and map size)
+						  'render_output': True,
+						  'scaling_factor': 20,
+						  'global_planner': False,
+						  #explore lite and rrt True, hector and RL False
+						  # 'session'           :   sess,
+						  }  # Size (in px) of each block in rendered cv2 window
+			elif r<gamma2:
+				print('*********************EXPLORELITE******************')
+				kwargs = {'env_id': 0,  # Must be unique for each parallely running environment
+					  'size': (32, 32),
+					  'obstacle_density': 20,
+					  'n_agents': 2,
+					  'rrt_exp': False,  # If this is True then all agents will explore with rrt only
+					  'rrt_mode': 0,
+					  # 0-deafult mode; 1-opencv frontier mode; 2-opencv with local rrt hybrid; 3 or any-opencv, global & local rrt included pro hybrid
+					  'agents_exp': [0,0],
+					  # 0-explore_lite ; 1-hector_exploration; 2 or any - free navigation [length must be = n_agents]
+					  'global_map_exp': True,
+					  # If True then explore_lite and hector_exp will use merged global maps instead of local merged maps
+					  'laser_range': 14.0,  # Laser scan range in blocks/boxes (1 unit = 1 block)
+					  'max_comm_dist': 7.5,
+					  # Map & last_known_poses communication range in blocks/boxes (1 unit = 1 block)
+					  'nav_recov_timeout': 2.0,
+					  # in seconds - timout for move_base to recover on path planning failure on each step (proportional to agents and map size)
+					  'render_output': True,
+					  'scaling_factor': 20,
+					  'global_planner': True,
+					  # explore lite and rrt True, hector and RL False
+					  # 'session'           :   sess,
+					  }  # Size (in px) of each block in rendered cv2 window
+			else:
+				print('*********************RRT*********************')
+				kwargs = {'env_id': 0,  # Must be unique for each parallely running environment
+						  'size': (32, 32),
+						  'obstacle_density': 20,
+						  'n_agents': 2,
+						  'rrt_exp': True,  # If this is True then all agents will explore with rrt only
+						  'rrt_mode': 0,
+						  # 0-deafult mode; 1-opencv frontier mode; 2-opencv with local rrt hybrid; 3 or any-opencv, global & local rrt included pro hybrid
+						  'agents_exp': [1,1],
+						  # 0-explore_lite ; 1-hector_exploration; 2 or any - free navigation [length must be = n_agents]
+						  'global_map_exp': True,
+						  # If True then explore_lite and hector_exp will use merged global maps instead of local merged maps
+						  'laser_range': 14.0,  # Laser scan range in blocks/boxes (1 unit = 1 block)
+						  'max_comm_dist': 7.5,
+						  # Map & last_known_poses communication range in blocks/boxes (1 unit = 1 block)
+						  'nav_recov_timeout': 2.0,
+						  # in seconds - timout for move_base to recover on path planning failure on each step (proportional to agents and map size)
+						  'render_output': True,
+						  'scaling_factor': 20,
+						  'global_planner': True,
+						  # explore lite and rrt True, hector and RL False
+						  # 'session'           :   sess,
+						  }  # Size (in px) of each block in rendered cv2 window
 
 		else:
 			imitation = False
+			kwargs = {'env_id': 0,  # Must be unique for each parallely running environment
+					  'size': (32, 32),
+					  'obstacle_density': 20,
+					  'n_agents': 2,
+					  'rrt_exp': False,  # If this is True then all agents will explore with rrt only
+					  'rrt_mode': 0,
+					  # 0-deafult mode; 1-opencv frontier mode; 2-opencv with local rrt hybrid; 3 or any-opencv, global & local rrt included pro hybrid
+					  'agents_exp': [3,3],
+					  # 0-explore_lite ; 1-hector_exploration; 2 or any - free navigation [length must be = n_agents]
+					  'global_map_exp': True,
+					  # If True then explore_lite and hector_exp will use merged global maps instead of local merged maps
+					  'laser_range': 14.0,  # Laser scan range in blocks/boxes (1 unit = 1 block)
+					  'max_comm_dist': 7.5,
+					  # Map & last_known_poses communication range in blocks/boxes (1 unit = 1 block)
+					  'nav_recov_timeout': 2.0,
+					  # in seconds - timout for move_base to recover on path planning failure on each step (proportional to agents and map size)
+					  'render_output': True,
+					  'scaling_factor': 20,
+					  'global_planner' : False,
+					  # 'session'           :   sess,
+					  }  # Size (in px) of each block in rendered cv2 window
+		env = gym.make('CustomEnv-v0', **kwargs)
+		model_count = model_count+1
+
+
 		env.step(localNet,trainer,model_count,imitation) #Navigation step of all agents
 		env.render()
 		env.close()
@@ -268,3 +363,4 @@ if __name__ == "__main__":
 			break
 		time.sleep(sleep_after_step)
 	sess.close()
+
