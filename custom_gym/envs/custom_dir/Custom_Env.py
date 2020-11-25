@@ -45,8 +45,9 @@ GRAD_CLIP = 100
 #tf.reset_default_graph()
 GLOBAL_NET_SCOPE       = 'global'
 lr = 1e-5
-NUM_THREADS            = 4
+NUM_THREADS            = 1
 NUM_BUFFERS = 100*NUM_THREADS
+IL_COUNT = 200
 #groupLocks=[]
 #trainer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
 #trainer=tf.compat.v1.train.AdamOptimizer(learning_rate=lr , use_locking=False,name='Adam')
@@ -462,6 +463,7 @@ class CustomEnv(gym.Env):
 				#assign the integer p to some varibale
 				self.local_network.saver.restore(self.local_network.sess,ckpt.model_checkpoint_path)
 		for id in range(self.workers_count):
+			self.agent[int(id/NUM_THREADS)].workerid = id
 			print('****************************'+str(int(id/NUM_THREADS))+'*************')
 			step_t.append( threading.Thread( target = self.agent[int(id/NUM_THREADS)].step, args=() ) )
 			step_t[id].start()
@@ -473,6 +475,8 @@ class CustomEnv(gym.Env):
 			#else:
 			if imitation == False:
 				summ.value.add(tag='Perf/Loss_'+str(id), simple_value=self.agent[id].loss)
+			else:
+				summ.value.add(tag='Perf/Imitation_Loss' + str(id), simple_value=self.agent[id].il_loss)
 			summ.value.add(tag='Perf/model_count'+str(id), simple_value=self.model_count)
 
 
@@ -840,6 +844,7 @@ class agent():
 					map_network[0][r][c][1] = 1.0
 
 		return map_network
+
 	def call_network(self,localNet,imitation=False):
 
 		#tf.reset_default_graph()
@@ -855,6 +860,10 @@ class agent():
 		#inputs=[]
 		#inputs[0]=local_map
 		#inputs[1]=global_map
+		print("WORKER ID :", self.workerid)
+		if self.workerid == 1:
+			print("WORKER_ID == 1")
+			self.map_merge_service()
 		self.inputs = self.observe()#np.stack((local_map,merged_map),axis =3)
 		#self.inputs = np.reshape(self.inputs, (1,self.env.map_height,self.env.map_width,2))
 		#self.inputs = np.self.inputs.astype(float)
@@ -894,7 +903,7 @@ class agent():
 			print"*********************************************IL*************************************"
 			self.last_known_pixels = np.reshape(self.last_known_pixel, (1, 4))
 			il_a = np.argmax(self.action.flatten())
-			il = localNet.sess.run(localNet.imitation_loss, feed_dict={localNet.last_known_pixel:self.last_known_pixels, localNet.optimal_actions:il_a, localNet.inputs:self.inputs,localNet.c_in:rnn_state[0],localNet.h_in:rnn_state[1]})
+			self.il_loss = localNet.sess.run(localNet.imitation_loss, feed_dict={localNet.last_known_pixel:self.last_known_pixels, localNet.optimal_actions:il_a, localNet.inputs:self.inputs,localNet.c_in:rnn_state[0],localNet.h_in:rnn_state[1]})
 			#print("IL")
 		else:
 			while self.exp_prog < 0.9 and self.total_steps < 200:
@@ -964,6 +973,10 @@ class agent():
 				#communication has to be activated
 				# local_map_1 = self.map_network
 				# merged_map_1 = self.env.map_network
+				print("WORKER ID :", self.workerid)
+				if self.workerid == 1:
+					print("WORKER_ID == 1")
+					self.map_merge_service()
 				self.inputs_1 = self.observe()
 				#self.inputs_1 = np.reshape(self.inputs_1, (1,self.env.map_height,self.env.map_width,2))
 				#update should be done
@@ -994,7 +1007,11 @@ class agent():
 				self.inputs = self.inputs_1
 				self.total_steps += 1
 				self.episode_step_count += 1
-
+				"""
+				if self.workerid==1:
+					self.env.render()
+					cv2.waitKey(10)
+				"""
 				##print(str(self.env.episode_step_count) + str(int(self.agent_id - 1)))
 				if self.training == True and self.episode_step_count == BUFFER_SIZE:
 					#tf.reset_default_graph()
@@ -1064,7 +1081,7 @@ class agent():
 					[self.gradients,self.loss,self.tf_value]= localNet.sess.run([localNet.gradients,localNet.loss,localNet.tf_value],feed_dict = {localNet.last_known_pixel:self.last_known_pixels,localNet.train_value:self.value, localNet.inputs:self.inputs_1 ,localNet.c_in:rnn_state[0],localNet.h_in:rnn_state[1] , localNet.policy : self.policy,localNet.value:self.value,localNet.actions:self.policy,localNet.train_valid:self.train_valid, localNet.target_v:self.discounted_rewards,localNet.advantages:self.advantages})
 					print(len(self.gradients))
 					print("loss = \n" + str(self.loss))
-					localNet.saver.save(localNet.sess, '/home/avinash/Models/model-'+str(int(self.env.model_count)/int(BUFFER_SIZE))+'.cptk')
+					localNet.saver.save(localNet.sess, '/home/svdeepak99/Models/model-'+str(int(self.env.model_count)/int(BUFFER_SIZE))+'.cptk')
 					print ('Saved Model')
 					#del localNet.loss
 					gc.collect()
@@ -1334,6 +1351,8 @@ class agent():
 				if self.env.exp_prog > self.env.rrt_thresh:
 					self.exp_completed = True
 			if not self.exp_completed:
+				for r in range(IL_COUNT):
+					self.prev = self.agent_pos
 					self.step_ret = self.move_base.step()	#Returns True only if agent moved a step (Returns True even if a new path was calculated succesfully)
 					self.imitation_loss()
 			return ()
@@ -1341,8 +1360,11 @@ class agent():
 			#	print(str(self.agent_id)+") Exp_Completed")
 		elif self.active_exp == self.env.Exp_id['hector_exploration']:
 			if not self.exp_completed:
-				self.step_ret = self.hect_nav.step()
-				self.imitation_loss()#Returns True only if agent moved a step (Returns True even if a new path was calculated succesfully)
+				for r in range(IL_COUNT):
+					self.prev = self.agent_pos
+					self.step_ret = self.hect_nav.step()
+					self.imitation_loss()
+
 				return ()
 		elif self.active_exp == self.env.Exp_id['free_move']:
 			# ENTER THE CODE FOR RL HERE

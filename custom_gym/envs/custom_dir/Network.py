@@ -248,7 +248,7 @@ if __name__ == "__main__":
 	sleep_after_step = 0.0  #Recommended to be proportional to the map size and no. of agents (0.5 for size:(128,128) & n_agents:8); can be 0.0 for low map sizes
 	model_count=2
 	while not rospy.is_shutdown():
-		gamma = 0.3
+		gamma = -0.3
 		gamma1 = 0.5
 		gamma2 = 0.3
 		gamma3 = 0.2
@@ -264,7 +264,7 @@ if __name__ == "__main__":
 						  'rrt_exp': False,  # If this is True then all agents will explore with rrt only
 						  'rrt_mode': 0,
 						  # 0-deafult mode; 1-opencv frontier mode; 2-opencv with local rrt hybrid; 3 or any-opencv, global & local rrt included pro hybrid
-						  'agents_exp': [2,2],
+						  'agents_exp': [1,1],
 						  # 0-explore_lite ; 1-hector_exploration; 2 or any - free navigation [length must be = n_agents]
 						  'global_map_exp': True,
 						  # If True then explore_lite and hector_exp will use merged global maps instead of local merged maps
