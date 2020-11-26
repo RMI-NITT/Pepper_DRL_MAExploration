@@ -47,7 +47,7 @@ GLOBAL_NET_SCOPE       = 'global'
 lr = 1e-5
 NUM_THREADS            = 1
 NUM_BUFFERS = 100*NUM_THREADS
-IL_COUNT = 200
+MAX_EPISODE_LENGTH = 200
 #groupLocks=[]
 #trainer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
 #trainer=tf.compat.v1.train.AdamOptimizer(learning_rate=lr , use_locking=False,name='Adam')
@@ -447,7 +447,8 @@ class CustomEnv(gym.Env):
 		self.imitation = imitation
 		self.trainer = trainer
 		self.local_network = localNet
-		step_t=[]
+		ILstep_t=[]
+		# network_t = []
 		#self.sess = sess
 		summ_writer = tf.summary.FileWriter(os.path.join('summaries','first'))
 		summ = tf.Summary()
@@ -463,12 +464,28 @@ class CustomEnv(gym.Env):
 				#assign the integer p to some varibale
 				self.local_network.saver.restore(self.local_network.sess,ckpt.model_checkpoint_path)
 		for id in range(self.workers_count):
-			self.agent[int(id/NUM_THREADS)].workerid = id
-			print('****************************'+str(int(id/NUM_THREADS))+'*************')
-			step_t.append( threading.Thread( target = self.agent[int(id/NUM_THREADS)].step, args=() ) )
-			step_t[id].start()
-		for id in range(self.workers_count):
-			step_t[id].join()
+			if self.agent[id].active_exp == self.Exp_id['free_move']:
+				self.agent[id].RL_init()
+		for step_c in range(MAX_EPISODE_LENGTH):
+			for id in range(self.workers_count):
+				self.agent[int(id/NUM_THREADS)].workerid = id
+				print('****************************'+str(int(id/NUM_THREADS))+'*************')
+				if not self.agent[id].active_exp == self.Exp_id['free_move']:
+					self.agent[id].prev = self.agent[id].agent_pos
+					ILstep_t.append( threading.Thread( target = self.agent[id].step, args=() ) )
+					ILstep_t[-1].start()
+			for step in ILstep_t:
+				step.join()
+			for id in range(self.workers_count):
+				if self.agent[id].active_exp == self.Exp_id['free_move']:
+					# network_t.append(threading.Thread(target=self.agent[id].call_network, args=(self.local_network, )))
+					self.agent[id].call_network(self.local_network)
+				else:
+					# network_t.append( threading.Thread( target = self.agent[id].imitation_loss , args=() ) )
+					self.agent[id].imitation_loss()
+				# network_t[id].start()
+			# for id in range(self.workers_count):
+			#	network_t[id].join()
 		for id in range(self.agents_count):
 			#if imitation == True:
 			#	summ.value.add(tag='Perf/Loss_' + str(id), simple_value=self.agent[id].imitation_loss)
@@ -478,7 +495,6 @@ class CustomEnv(gym.Env):
 			else:
 				summ.value.add(tag='Perf/Imitation_Loss' + str(id), simple_value=self.agent[id].il_loss)
 			summ.value.add(tag='Perf/model_count'+str(id), simple_value=self.model_count)
-
 
 		#summ.value.add(tag='Perf/Reward', simple_value=self.r)
 		#if self.episode_step_count != BUFFER_SIZE:
@@ -845,52 +861,49 @@ class agent():
 
 		return map_network
 
+	def RL_init(self):
+		self.episode_buffers, self.s1Values = [[] for _ in range(NUM_BUFFERS)], [[] for _ in range(NUM_BUFFERS)]
+		self.num_buff = 0
+		# local_map = self.map_network
+		# merged_map = self.env.map_network
+		no_agents = self.env.agents_count
+
+		# inputs=[]
+		# inputs[0]=local_map
+		# inputs[1]=global_map
+		if not os.path.exists('summaries'):
+			os.mkdir('summaries')
+		if not os.path.exists(os.path.join('summaries', 'first')):
+			os.mkdir(os.path.join('summaries', 'first'))
+		# self.Network = localNet
+		# self.graph = self.Network.graph
+		# print(inputs.shape)
+		# self.Network.trainer = tf.contrib.opt.NadamOptimizer(learning_rate=lr, use_locking=True)
+		# with localNet.sess.as_default():
+		# global_step = get_or_create_global_step()
+
+		# self.Network = Network(self.name, trainer, self.env.map_width,self.env.map_height,self.training, GLOBAL_NET_SCOPE)	#local_network
+
+		# model = Network(self.name, trainer, self.env.map_width,self.env.map_height,self.training, GLOBAL_NET_SCOPE)
+		# saver = tf.train.Saver(max_to_keep=1)
+
+		self.episode_step_count = 0
+		self.total_steps = 0
+		self.episode_number += 1
+
 	def call_network(self,localNet,imitation=False):
 
 		#tf.reset_default_graph()
 		#while not localNet.coord.should_stop():
 		localNet.sess.run(self.pull_global)
 
-
-		self.episode_buffers, self.s1Values = [ [] for _ in range(NUM_BUFFERS) ], [ [] for _ in range(NUM_BUFFERS) ]
-		self.num_buff = 0
-		# local_map = self.map_network
-		# merged_map = self.env.map_network
-		no_agents = self.env.agents_count
-		#inputs=[]
-		#inputs[0]=local_map
-		#inputs[1]=global_map
-		print("WORKER ID :", self.workerid)
-		if self.workerid == 1:
-			print("WORKER_ID == 1")
-			self.map_merge_service()
-		self.inputs = self.observe()#np.stack((local_map,merged_map),axis =3)
+		self.inputs_new = self.observe()#np.stack((local_map,merged_map),axis =3)
 		#self.inputs = np.reshape(self.inputs, (1,self.env.map_height,self.env.map_width,2))
 		#self.inputs = np.self.inputs.astype(float)
 
 		config=ConfigProto(inter_op_parallelism_threads=1,intra_op_parallelism_threads=1)
 		config.gpu_options.allow_growth=True
 
-		if not os.path.exists('summaries'):
-			os.mkdir('summaries')
-		if not os.path.exists(os.path.join('summaries','first')):
-			os.mkdir(os.path.join('summaries','first'))
-		#self.Network = localNet
-		#self.graph = self.Network.graph
-		#print(inputs.shape)
-		#self.Network.trainer = tf.contrib.opt.NadamOptimizer(learning_rate=lr, use_locking=True)
-		#with localNet.sess.as_default():
-			#global_step = get_or_create_global_step()
-
-			#self.Network = Network(self.name, trainer, self.env.map_width,self.env.map_height,self.training, GLOBAL_NET_SCOPE)	#local_network
-			
-
-		#model = Network(self.name, trainer, self.env.map_width,self.env.map_height,self.training, GLOBAL_NET_SCOPE)
-		#saver = tf.train.Saver(max_to_keep=1)
-
-		self.episode_step_count = 0
-		self.total_steps = 0
-		self.episode_number +=1
 		#Z = localNet.net(no_agents)
 		#master_network = Network(GLOBAL_NET_SCOPE,,True,GRID_SIZE,GLOBAL_NET_SCOPE) # Generate global network
 		#self.Network.init = tf.global_variables_initializer()
@@ -901,12 +914,174 @@ class agent():
 		rnn_state = localNet.state_init
 		if imitation == True and self.env.model_count>=5:
 			print"*********************************************IL*************************************"
+			self.inputs = self.inputs_new
 			self.last_known_pixels = np.reshape(self.last_known_pixel, (1, 4))
 			il_a = np.argmax(self.action.flatten())
 			self.il_loss = localNet.sess.run(localNet.imitation_loss, feed_dict={localNet.last_known_pixel:self.last_known_pixels, localNet.optimal_actions:il_a, localNet.inputs:self.inputs,localNet.c_in:rnn_state[0],localNet.h_in:rnn_state[1]})
 			#print("IL")
 		else:
-			while self.exp_prog < 0.9 and self.total_steps < 200:
+			self.map_merge_service()
+			if self.exp_prog < 0.9 and self.total_steps < 200:
+				if self.total_steps > 0:
+					# episode buffer for experience replay
+					self.inputs_1 = self.inputs_new
+					a = self.prev_a
+					self.episode_buffer.append([self.inputs, a, self.r, self.inputs_1, self.value])
+					self.episode_values.append(self.value)
+					# episode_reward += r
+
+					self.inputs = self.inputs_1
+					"""
+                    if self.workerid==1:
+                        self.env.render()
+                        cv2.waitKey(10)
+                    """
+					##print(str(self.env.episode_step_count) + str(int(self.agent_id - 1)))
+					if self.training == True and self.episode_step_count == (BUFFER_SIZE-1):
+						# tf.reset_default_graph()
+						# print ('Saving Model'+str(int(self.total_steps)/int(BUFFER_SIZE)))
+
+						self.episode_step_count = 0
+
+						self.train_valid = np.zeros(9)
+						self.last_known_pixels = np.reshape(self.last_known_pixel, (1, 4))
+						self.value1, self.policy1, self.rnn_state1, self.policy_sig1 = localNet.sess.run(
+							[localNet.value, localNet.policy, localNet.state_out, localNet.policy_sig],
+							feed_dict={localNet.last_known_pixel: self.last_known_pixels,
+									   localNet.inputs: self.inputs_1, localNet.c_in: rnn_state[0],
+									   localNet.h_in: rnn_state[1], })
+						self.s1Values[self.num_buff] = self.value1
+						# print("W11 = \n"+ str(self.W11))
+						print("value1 = \n" + str(self.value1))
+						print("policy1 = \n" + str(self.policy1.shape))
+						self.num_buff += 1
+						self.episode_buffers[self.num_buff] = []
+						# calculate advantage and discounts
+						self.rewards_plus = np.asarray([self.r] + [self.value1])
+						# self.env.discounted_rewards = discount(self.env.rewards_plus,DISCOUNT_RATE)[:-1]
+						self.discounted_rewards = self.rewards_plus + DISCOUNT_RATE * self.value1
+						self.value_plus = np.asarray([self.value] + [self.value1])
+						self.advantages = self.r + DISCOUNT_RATE * np.asarray(self.value_plus[1:]) - self.value_plus[
+																									 :-1]
+						if self.agent_pos[0] > 0 and self.agent_pos[0] + 1 < self.env.size[0] and self.map_check(
+								self.agent_pos[0] - 1, self.agent_pos[1]) != 0 and self.map_check(self.agent_pos[0] + 1,
+																								  self.agent_pos[
+																									  1]) != 0:
+							self.train_valid[5] = 1
+						else:
+							self.train_valid[5] = 0
+						if self.agent_pos[1] + 1 < self.env.size[1] and self.map_check(self.agent_pos[0],
+																					   self.agent_pos[1] + 1) != 0 and \
+								self.agent_pos[1] > 0 and self.map_check(self.agent_pos[0], self.agent_pos[1] - 1) != 0:
+							self.train_valid[6] = 1
+						else:
+							self.train_valid[6] = 0
+						if self.agent_pos[0] > 0 and self.map_check(self.agent_pos[0] - 1, self.agent_pos[1]) != 0 and \
+								self.agent_pos[1] > 0 and self.map_check(self.agent_pos[0], self.agent_pos[1] - 1) != 0:
+							self.train_valid[7] = 1
+						else:
+							self.train_valid[7] = 0
+						if self.agent_pos[1] + 1 < self.env.size[1] and self.map_check(self.agent_pos[0],
+																					   self.agent_pos[1] + 1) != 0 and \
+								self.agent_pos[1] > 0 and self.map_check(self.agent_pos[0], self.agent_pos[1] - 1) != 0:
+							self.train_valid[8] = 1
+						else:
+							self.train_valid[8] = 0
+						if self.agent_pos[0] > 0 and self.map_check(self.agent_pos[0] - 1, self.agent_pos[1]) != 0:
+							self.train_valid[0] = 1
+						else:
+							self.train_valid[0] = 0
+
+						if self.agent_pos[1] + 1 < self.env.size[1] and self.map_check(self.agent_pos[0],
+																					   self.agent_pos[1] + 1) != 0:
+							self.train_valid[1] = 1
+						else:
+							self.train_valid[1] = 0
+
+						if self.agent_pos[0] + 1 < self.env.size[0] and self.map_check(self.agent_pos[0] + 1,
+																					   self.agent_pos[1]) != 0:
+							self.train_valid[2] = 1
+						else:
+							self.train_valid[2] = 0
+
+						if self.agent_pos[1] > 0 and self.map_check(self.agent_pos[0], self.agent_pos[1] - 1) != 0:
+							self.train_valid[3] = 1
+						else:
+							self.train_valid[3] = 0
+
+						self.train_valid[4] = 1
+						# graph = tf.get_default_graph()
+						# self.local_vars = self.Network.calculate_loss(self.policy,self.value,self.value1,self.policy_sig1)
+
+						# Y = localNet.calculate_loss(self.value,localNet.policy_sig)
+						self.last_known_pixels = np.reshape(self.last_known_pixel, (1, 4))
+						[self.gradients, self.loss, self.tf_value] = localNet.sess.run(
+							[localNet.gradients, localNet.loss, localNet.tf_value],
+							feed_dict={localNet.last_known_pixel: self.last_known_pixels,
+									   localNet.train_value: self.value, localNet.inputs: self.inputs_1,
+									   localNet.c_in: rnn_state[0], localNet.h_in: rnn_state[1],
+									   localNet.policy: self.policy, localNet.value: self.value,
+									   localNet.actions: self.policy, localNet.train_valid: self.train_valid,
+									   localNet.target_v: self.discounted_rewards,
+									   localNet.advantages: self.advantages})
+						print(len(self.gradients))
+						print("loss = \n" + str(self.loss))
+						localNet.saver.save(localNet.sess, '/home/svdeepak99/Models/model-' + str(
+							int(self.env.model_count) / int(BUFFER_SIZE)) + '.cptk')
+						print ('Saved Model')
+						# del localNet.loss
+						gc.collect()
+						# reset_trainer_op = tf.variables_initializer(self.env.trainer.variables())
+						# localNet.sess.run(reset_trainer_op
+						# del sess
+						# self.synchronze()
+						localNet.sess.run(self.pull_global)
+						'''
+                        values = localNet.W1
+                        counts, bin_edges = np.histogram(values, bins=10)
+
+                        # Fill fields of histogram proto
+                        hist = tf.HistogramProto()
+                        hist.min = float(np.min(values))
+                        hist.max = float(np.max(values))
+                        hist.num = int(np.prod(values.shape))
+                        hist.sum = float(np.sum(values))
+                        hist.sum_squares = float(np.sum(values**2))
+
+                        # Requires equal number as bins, where the first goes from -DBL_MAX to bin_edges[1]
+                        # See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/summary.proto#L30
+                        # Thus, we drop the start of the first bin
+                        bin_edges = bin_edges[1:]
+
+                        # Add bin edges and counts
+                        for edge in bin_edges:
+                            hist.bucket_limit.append(edge)
+                        for c in counts:
+                            hist.bucket.append(c)
+
+                        # Create and write Summary
+                        summ.value.add(tag="W1", histo=hist)
+
+                        #summ.value.add(tag = "weights1",histo = localNet.W1)
+
+                summ.value.add(tag='Perf/constant', simple_value=self.a)
+                summ_writer.add_summary(summ)
+
+                summ_writer.flush()
+
+                print("loss = \n" + str(self.loss))
+                tf_value = tf.summary.scalar('loss', self.loss)
+                tf_value1 = localNet.sess.run(tf_value)
+                summ_writer.add_summary(tf_value1)
+
+                #tf_value1 = localNet.sess.run(localNet.tf_value)
+                #summ_writer.add_summary(self.tf_value)
+
+
+                #writer = tf.summary.FileWriter('./graphs_new', localNet.graph)
+                '''
+				else:
+					self.inputs = self.inputs_new
 				#print(self.exp_prog)
 				#print("*****************")
 				#self.value,self.policy,rnn_state,self.policy_sig = self.Network.net(no_agents,self.last_known_pixel)
@@ -969,15 +1144,9 @@ class agent():
 				else:
 					a='n'
 
-
 				#communication has to be activated
 				# local_map_1 = self.map_network
 				# merged_map_1 = self.env.map_network
-				print("WORKER ID :", self.workerid)
-				if self.workerid == 1:
-					print("WORKER_ID == 1")
-					self.map_merge_service()
-				self.inputs_1 = self.observe()
 				#self.inputs_1 = np.reshape(self.inputs_1, (1,self.env.map_height,self.env.map_width,2))
 				#update should be done
 				if a == 'n':
@@ -999,147 +1168,11 @@ class agent():
 							collision +=1
 				self.r += collision*reward.COLLISION.value
 				self.rewards[self.agent_id-1] +=self.r
-				#episode buffer for experience replay
-				self.episode_buffer.append([self.inputs,a,self.r,self.inputs_1,self.value])
-				self.episode_values.append(self.value)
-				#episode_reward += r
 
-				self.inputs = self.inputs_1
+				self.prev_a = a
 				self.total_steps += 1
 				self.episode_step_count += 1
-				"""
-				if self.workerid==1:
-					self.env.render()
-					cv2.waitKey(10)
-				"""
-				##print(str(self.env.episode_step_count) + str(int(self.agent_id - 1)))
-				if self.training == True and self.episode_step_count == BUFFER_SIZE:
-					#tf.reset_default_graph()
-					#print ('Saving Model'+str(int(self.total_steps)/int(BUFFER_SIZE)))
 
-
-
-					self.episode_step_count = 0
-
-					self.train_valid = np.zeros(9)
-					self.last_known_pixels = np.reshape(self.last_known_pixel,(1,4))
-					self.value1,self.policy1,self.rnn_state1,self.policy_sig1 = localNet.sess.run([localNet.value,localNet.policy, localNet.state_out, localNet.policy_sig],feed_dict ={localNet.last_known_pixel:self.last_known_pixels, localNet.inputs:self.inputs_1,localNet.c_in:rnn_state[0],localNet.h_in:rnn_state[1],})
-					self.s1Values[self.num_buff] = self.value1
-					#print("W11 = \n"+ str(self.W11))
-					print("value1 = \n" + str(self.value1))
-					print("policy1 = \n" + str(self.policy1.shape))
-					self.num_buff+=1
-					self.episode_buffers[self.num_buff] = []
-					# calculate advantage and discounts
-					self.rewards_plus = np.asarray([self.r] + [self.value1])
-					#self.env.discounted_rewards = discount(self.env.rewards_plus,DISCOUNT_RATE)[:-1]
-					self.discounted_rewards = self.rewards_plus + DISCOUNT_RATE * self.value1
-					self.value_plus = np.asarray([self.value] + [self.value1])
-					self.advantages = self.r + DISCOUNT_RATE * np.asarray(self.value_plus[1:]) - self.value_plus[:-1]
-					if self.agent_pos[0]>0 and self.agent_pos[0]+1<self.env.size[0] and self.map_check(self.agent_pos[0]-1,self.agent_pos[1])!=0 and self.map_check(self.agent_pos[0]+1,self.agent_pos[1])!=0:
-						self.train_valid[5] = 1
-					else :
-						self.train_valid[5] = 0
-					if self.agent_pos[1]+1<self.env.size[1] and self.map_check(self.agent_pos[0],self.agent_pos[1]+1)!=0 and self.agent_pos[1]>0 and self.map_check(self.agent_pos[0],self.agent_pos[1]-1)!=0 :
-						self.train_valid[6] = 1
-					else:
-						self.train_valid[6] = 0
-					if self.agent_pos[0]>0 and self.map_check(self.agent_pos[0]-1,self.agent_pos[1])!=0 and self.agent_pos[1]>0 and self.map_check(self.agent_pos[0],self.agent_pos[1]-1)!=0:
-						self.train_valid[7] = 1
-					else:
-						self.train_valid[7] = 0
-					if self.agent_pos[1]+1<self.env.size[1] and self.map_check(self.agent_pos[0],self.agent_pos[1]+1)!=0 and self.agent_pos[1]>0 and self.map_check(self.agent_pos[0],self.agent_pos[1]-1)!=0 :
-						self.train_valid[8] = 1
-					else:
-						self.train_valid[8] = 0
-					if self.agent_pos[0]>0 and self.map_check(self.agent_pos[0]-1,self.agent_pos[1])!=0 :
-						self.train_valid[0] = 1
-					else :
-						self.train_valid[0] = 0
-
-					if self.agent_pos[1]+1<self.env.size[1] and self.map_check(self.agent_pos[0],self.agent_pos[1]+1)!=0 :
-						self.train_valid[1] = 1
-					else :
-						self.train_valid[1] = 0
-
-					if self.agent_pos[0]+1<self.env.size[0] and self.map_check(self.agent_pos[0]+1,self.agent_pos[1])!=0 :
-						self.train_valid[2]=  1
-					else :
-						self.train_valid[2] = 0
-
-					if self.agent_pos[1]>0 and self.map_check(self.agent_pos[0],self.agent_pos[1]-1)!=0 :
-						self.train_valid[3] = 1
-					else :
-						self.train_valid[3] = 0
-
-					self.train_valid[4] = 1
-					#graph = tf.get_default_graph()
-					#self.local_vars = self.Network.calculate_loss(self.policy,self.value,self.value1,self.policy_sig1)
-
-					#Y = localNet.calculate_loss(self.value,localNet.policy_sig)
-					self.last_known_pixels = np.reshape(self.last_known_pixel,(1,4))
-					[self.gradients,self.loss,self.tf_value]= localNet.sess.run([localNet.gradients,localNet.loss,localNet.tf_value],feed_dict = {localNet.last_known_pixel:self.last_known_pixels,localNet.train_value:self.value, localNet.inputs:self.inputs_1 ,localNet.c_in:rnn_state[0],localNet.h_in:rnn_state[1] , localNet.policy : self.policy,localNet.value:self.value,localNet.actions:self.policy,localNet.train_valid:self.train_valid, localNet.target_v:self.discounted_rewards,localNet.advantages:self.advantages})
-					print(len(self.gradients))
-					print("loss = \n" + str(self.loss))
-					localNet.saver.save(localNet.sess, '/home/svdeepak99/Models/model-'+str(int(self.env.model_count)/int(BUFFER_SIZE))+'.cptk')
-					print ('Saved Model')
-					#del localNet.loss
-					gc.collect()
-					#reset_trainer_op = tf.variables_initializer(self.env.trainer.variables())
-					#localNet.sess.run(reset_trainer_op
-					#del sess
-					#self.synchronze()
-					localNet.sess.run(self.pull_global)
-					'''
-					values = localNet.W1
-					counts, bin_edges = np.histogram(values, bins=10)
-					
-					# Fill fields of histogram proto
-					hist = tf.HistogramProto()
-					hist.min = float(np.min(values))
-					hist.max = float(np.max(values))
-					hist.num = int(np.prod(values.shape))
-					hist.sum = float(np.sum(values))
-					hist.sum_squares = float(np.sum(values**2))
-
-					# Requires equal number as bins, where the first goes from -DBL_MAX to bin_edges[1]
-					# See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/summary.proto#L30
-					# Thus, we drop the start of the first bin
-					bin_edges = bin_edges[1:]
-
-					# Add bin edges and counts
-					for edge in bin_edges:
-						hist.bucket_limit.append(edge)
-					for c in counts:
-						hist.bucket.append(c)
-
-					# Create and write Summary
-					summ.value.add(tag="W1", histo=hist)
-					
-					#summ.value.add(tag = "weights1",histo = localNet.W1)
-			
-			summ.value.add(tag='Perf/constant', simple_value=self.a)
-			summ_writer.add_summary(summ)
-				
-			summ_writer.flush()
-			
-			print("loss = \n" + str(self.loss))
-			tf_value = tf.summary.scalar('loss', self.loss)
-			tf_value1 = localNet.sess.run(tf_value)
-			summ_writer.add_summary(tf_value1)
-			
-			#tf_value1 = localNet.sess.run(localNet.tf_value)
-			#summ_writer.add_summary(self.tf_value)
-
-			
-			#writer = tf.summary.FileWriter('./graphs_new', localNet.graph)
-			'''
-
-	
-			
-	
-			
-			
 
 	def gmapping_sb_init(self):
 		try:
@@ -1333,8 +1366,8 @@ class agent():
 		return()
 
 	def step(self):
-		lock = threading.Lock()
-		lock.acquire()
+		# lock = threading.Lock()
+		# lock.acquire()
 		self.prev = self.agent_pos
 		if self.active_exp == self.env.Exp_id['free_navigation']:
 			self.step_ret = self.move_base.step()
@@ -1351,23 +1384,17 @@ class agent():
 				if self.env.exp_prog > self.env.rrt_thresh:
 					self.exp_completed = True
 			if not self.exp_completed:
-				for r in range(IL_COUNT):
-					self.prev = self.agent_pos
-					self.step_ret = self.move_base.step()	#Returns True only if agent moved a step (Returns True even if a new path was calculated succesfully)
-					self.imitation_loss()
+				self.step_ret = self.move_base.step()	#Returns True only if agent moved a step (Returns True even if a new path was calculated succesfully)
 			return ()
 			#else:
 			#	print(str(self.agent_id)+") Exp_Completed")
 		elif self.active_exp == self.env.Exp_id['hector_exploration']:
 			if not self.exp_completed:
-				for r in range(IL_COUNT):
-					self.prev = self.agent_pos
-					self.step_ret = self.hect_nav.step()
-					self.imitation_loss()
-
+				self.step_ret = self.hect_nav.step()
 				return ()
 		elif self.active_exp == self.env.Exp_id['free_move']:
 			# ENTER THE CODE FOR RL HERE
+			"""
 			self.total_steps = 0
 			self.call_network(self.env.local_network)
 			print(self.exp_prog)
@@ -1377,10 +1404,10 @@ class agent():
 			else:
 				print("----------------------------FAIL " + str(int(self.env.model_count)) + "---------------------")
 			self.step_ret = True
+			"""
 			return ()
-		lock.release()
+		# lock.release()
 		return ()
-
 
 	'''
 	def observe(self):

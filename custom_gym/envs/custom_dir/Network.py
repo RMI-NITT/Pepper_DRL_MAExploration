@@ -246,9 +246,9 @@ if __name__ == "__main__":
 	id_offset=0
 	n=0
 	sleep_after_step = 0.0  #Recommended to be proportional to the map size and no. of agents (0.5 for size:(128,128) & n_agents:8); can be 0.0 for low map sizes
-	model_count=2
+	model_count=5
 	while not rospy.is_shutdown():
-		gamma = -0.3
+		gamma = 0.3
 		gamma1 = 0.5
 		gamma2 = 0.3
 		gamma3 = 0.2
