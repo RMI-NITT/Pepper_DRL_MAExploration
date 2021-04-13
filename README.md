@@ -53,3 +53,30 @@ This repository uses Deep Reinforcement Learning (DRL) with Imitation Learning (
 10) `max_comm_dist` - Communication range of all agents.
 11) `nav_recov_timeout` - Timeout to recover and retry if Global Planner node fails to return a path.
 
+### Functions: ###
+1) `step()` - Executes 1 step of the environment (i.e.) 1 step of all agents.
+2) `agent[n].observe()` - Outputs the states of agent 'n', to be sent as input to its DRL network.
+3) `agent[n].odom_update(x,y)` - Moves agent 'n' to the specified (x,y) coordinate.
+4) `agent[n].map_check(x,y)` - Check if agent 'n' is free to move to (x,y) and if an obstacle is not present there.
+5) `agent[n].set_goal_pixel(x,y)` - Sets (x,y) pixel as goal for the global_planner to navigate agent 'n' to.
+6) `agent[n].move_base.cancel_sub(0)` - Cancel the current goal of global_planner on agent 'n', before completion and halt the agent.
+7) `agent[n].switch_to_free_nav()` - Remove association of agent 'n' from the initialized exploration expert and enables the global_planner to take any goals.
+8) `agent[n].switch_to_free_move()` - Disables both exploration expert and global_planner() on agent 'n' and restrics the action space to adjacent cell mevements.
+9) `agent[n].switch_to_exp()` - Undoes the changes of `switch_to_free_nav()` and/or  function.
+10) `render()` - Render the present state of the environment in an OpenCV window.
+11) `reset()` - Kill all the Agents in an environment and respawn them at random locations by clearing their maps.
+12) `close()` - Deletes the entire environment.
+
+### Key Variables: ###
+1) Exploration Progresses: `exp_prog`, `agent[n].exp_prog`, `agent[n].local_exp_prog`
+2) Dimensions of map returned by gmapping: `map_width`, `map_height`, `map_length`
+3) `agent[n].agent_pos` - Agent 'n's current (x,y) coordinate in the environment.
+4) `agent[n].agent_pixel` - Agent 'n's pixel coordinate in the map returned by gmapping.
+5) `map` - Global map subscribed from the `global_map_merger.py` node.
+6) `agent[n].map` - Local communicated map of agent 'n', subscribed from the `local_map_receiver.py` node.
+7) `frontier_map` - Contains the frontier pixels in global map, subscribed from `frontier_detector.py` node.
+8) `agent[n].frontier_map` - frontier_map of agent 'n'.
+9) `agent[n].last_known_pixel` - Agent 'n's last known locations (in terms of (x,y) in gmapping's map) of every other agent, that came within its communication range.
+10) `agent[n].goal_pos` - Agent 'n's latest (x,y) coordinate goal on the environment which is in progress (or) just got completed.
+11) `agent[n].goal_pixel` - (x,y) pixel position of `agent[n].goal_pos` in gmapping's map.
+12) `agent[n].step_ret` - Denotes if agent 'n' is undergoing active navigation (or) inactive.
