@@ -6,6 +6,9 @@ This repository uses Deep Reinforcement Learning (DRL) with Imitation Learning (
 4) Perform point to point navigation using Global Planner
 5) Perform autonomous exploration using Frontier, RRT (Rapidly exploring Random Tree) and Hector Exploration ROS Packages, which are used as experts that generate paths to train the DRL network using Imitation Learning.
 
+**NOTE: SCROLL DOWN TO VIEW THE FULL GALLERY OF RENDERED OUTPUTS**
+<br/>**YouTube Playlist of Project's Demonstration:** https://youtube.com/playlist?list=PLuR39FtkMtNUTGnFBpfRmrSCLLLz4uBIz
+
 ## Getting Started ##
 ### System Requirements: ###
 1) Ubuntu 16.04 (Xenial Xerus) OS
