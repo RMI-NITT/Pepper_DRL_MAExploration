@@ -78,3 +78,47 @@ This repository uses Deep Reinforcement Learning (DRL) with Imitation Learning (
 10) `agent[n].goal_pos` - Agent 'n's latest (x,y) coordinate goal on the environment which is in progress (or) just got completed.
 11) `agent[n].goal_pixel` - (x,y) pixel position of `agent[n].goal_pos` in gmapping's map.
 12) `agent[n].step_ret` - Denotes if agent 'n' is undergoing active navigation (or) inactive.
+
+# Gallery
+
+## 1) Obstacles Spawn with varying density: ##
+<img src="pictures/Spawning_Obstacles.gif">
+
+## 2) SLAM - Quick Sweep (with gmapping): ##
+<img src="pictures/SLAM.gif">
+<img src="pictures/gmapping_rosgraph.png">
+
+## 3) Map Merging Nodes - Global and Local  (for 4 Agents): ##
+
+### (i) ROS Graph: ###
+<img src="pictures/rqt_graph_4-agents.png">
+
+### (ii) ROS Tf tree: ###
+<img src="pictures/rqt_tf_tree_4-agents.png">
+
+## 4) Navigation - Point to point (with Global Planner): ###
+<img src="pictures/Navigation.gif">
+
+## 5) Frontier Exploration Expert: ##
+<img src="pictures/Frontier_Exploration.gif">
+<img src="pictures/rqt_graph_frontier.png">
+
+## 6) RRT Exploration Expert: ##
+<img src="pictures/RRT_Exploration.gif">
+
+## 7) Hector Exploration Expert: ##
+
+### (i) 32x32 World - 3 Agents: ###
+<img src="pictures/Hector-32x32_3-Agents.gif">
+
+### (ii) 64x64 World - 4 Agents: ###
+<img src="pictures/Hector-64x64_4-Agents.gif">
+
+### (iii) 128x128 World - 8 Agents: ###
+<img src="pictures/Hector-128x128_8-Agents.gif">
+
+### (iv) ROS Graph (with 3 Agents): ###
+<img src="pictures/rqt_graph_hector_3_agents.png">
+
+## 8) Simultaneous Multi-Environment Instances: ##
+<img src="pictures/multi-env_rosgraph.png">
