@@ -20,7 +20,7 @@ This repository uses Deep Reinforcement Learning (DRL) with Imitation Learning (
    cd custom_gym
    pip install -e .
    ```
-   If you wish to uninstall the environment later for reasons like changing the directory of the environment, you can run the following:
+   If you wish to uninstall the environment later for reasons like changing the source directory, you can run the following:
    ```
    pip uninstall custom_env
    ```
