@@ -1,0 +1,31 @@
+costmap:
+  #global_frame: map
+  #robot_base_frame: base_link
+
+  update_frequency: 10.0
+  publish_frequency: 10.0
+  transform_tolerance: 100.0
+
+  static_map: true
+   
+  obstacle_range: 3.0
+  raytrace_range: 3.5
+
+  #footprint: [[-0.205, -0.155], [-0.205, 0.155], [0.077, 0.155], [0.077, -0.155]]
+  robot_radius: 0.05
+
+  inflation_radius: 1.0
+  cost_scaling_factor: 3.0
+
+  map_type: costmap
+  observation_sources: scan
+  scan: {data_type: LaserScan, topic: scan, marking: false, clearing: false}
+
+planner:
+  allow_unknown: true
+  use_dijkstra: true
+  use_grid_path: true
+  neutral_cost: 66
+  lethal_cost: 253
+  default_tolerance: 1.0
+  cost_factor: 0.55

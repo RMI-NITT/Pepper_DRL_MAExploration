@@ -1,0 +1,145 @@
+<!-- gmapping_simple_sim -->
+
+<launch>
+
+<arg name="agent_id" default="0" />
+<arg name="env_ns" default="Env_0" />
+<arg name="group_ns" value="$(arg env_ns)/Agent_$(arg agent_id)" />
+<arg name="n_agents" default="1" />
+<arg name="min_x" default="-100" />
+<arg name="min_y" default="-100" />
+<arg name="max_x" default="100" />
+<arg name="max_y" default="100" />
+<arg name="mapping_delta" default="0.10" />
+<arg name="max_comm_dist" default="3.0" />
+<arg name="enable_global_planner" default="false" />
+<arg name="start_rrt" default="false" />
+<arg name="start_e_lite" default="false" />
+<arg name="start_hector" default="false" />
+<arg name="map_topic" default="map" />
+
+<arg name="eta" value="1.0"/>
+
+<group ns = "$(arg group_ns)">
+<!-- Gmapping -->
+  <node pkg="gmapping" type="slam_gmapping" name="gmapping" respawn="true">
+    <param name="base_frame" value="$(arg group_ns)/base_link"/>
+    <param name="odom_frame" value="$(arg group_ns)/odom"/>
+    <param name="map_frame"  value="$(arg env_ns)/map"/>
+    
+    <!-- For a safety factor for the map to never go below 5Hz -->
+    <param name="map_update_interval" value="0.1"/>
+
+    <!--A 600+ minimumScore brings high quality map,which in our case must depend more on odom-->
+    <param name="minimumScore" value="10000"/>
+
+    <!-- The below 4 parameters are set to zero as the odometry error in our case in zero -->
+    <param name="srr" value="0.0"/>
+    <param name="srt" value="0.0"/>
+    <param name="str" value="0.0"/>
+    <param name="stt" value="0.0"/>
+    
+    <!-- delta is the desired meters per grid on the map -->
+    <param name="delta" value="$(arg mapping_delta)"/>
+    
+    <!-- Negative value of Temporal update disables time based laser scan updates on map -->
+    <param name="temporalUpdate" value="-1"/>
+
+    <!-- Process a scan each time the robot translates as far as linearUpdate's value in meters -->
+    <param name="linearUpdate" value="0.39"/>
+
+    <!-- Parameters for map resolution and origin -->
+    <param name="xmin" value="$(arg min_x)" />
+    <param name="ymin" value="$(arg min_y)" />
+    <param name="xmax" value="$(arg max_x)" />
+    <param name="ymax" value="$(arg max_y)" />
+
+    <remap from="map" to="local_map" />
+    <!-- remap from="map" to="/$(arg group_ns)/mapplet_pool/$(arg agent_id)/map" / -->
+
+  </node>
+
+  <!-- local map receiver -->
+  <node pkg="pepper" type="local_map_receiver.py" name="local_map_receiver" respawn="true">
+    <param name="bot_id" value="$(arg agent_id)" />
+    <param name="bot_count" value="$(arg n_agents)" />
+    <param name="max_comm_dist" value="$(arg max_comm_dist)" />
+    <param name="bot_ns" value="$(arg env_ns)/Agent_" />
+  </node>
+
+  <group if="$(arg enable_global_planner)">
+  <!-- global_planner -->
+  <node pkg="global_planner" type="planner" name="global_planner" respawn="true">
+    <rosparam file="$(find pepper)/param/planner.yaml" command="load" />
+    <param name="costmap/global_frame" value="$(arg env_ns)/map" />
+    <param name="costmap/robot_base_frame" value="$(arg group_ns)/base_link" />
+    <remap from="global_planner/costmap/costmap" to="move_base_node/global_costmap/costmap" />
+    <remap from="map" to="$(arg map_topic)" />
+  </node>
+  </group>
+
+  <!-- occupancy_cells_counter -->
+  <node pkg="pepper" type="occupancy_counter.py" name="occupancy_counter" respawn="true">
+    <param name="map_topic" value="map" />
+    <param name="occupancy_count_topic" value="occupancy_count" />
+  </node>
+  
+  <!-- occupancy_cells_counter for local map -->
+  <node pkg="pepper" type="occupancy_counter.py" name="local_occ_counter" respawn="true">
+    <param name="map_topic" value="local_map" />
+    <param name="occupancy_count_topic" value="local_occ_count" />
+  </node>
+
+  <!-- frontier_detector -->
+  <!--node pkg="pepper" type="frontier_detector.py" name="frontier_detector" respawn="true">
+    <param name="map_topic" value="map" />
+    <param name="frontier_topic" value="frontier_map" />
+  </node-->
+
+  <group if="$(arg start_rrt)">
+  <!-- local_rrt_detector -->
+  <node pkg="rrt_exploration" type="local_rrt_detector" name="rrt_detector" respawn="true">
+    <param name="eta" value="$(arg eta)"/>
+    <param name="map_topic" value="map"/>
+    <param name="robot_frame" value="$(arg group_ns)/base_link"/>
+    <remap from="/clicked_point" to="/$(arg env_ns)/clicked_point"/>
+    <remap from="/detected_points" to="/$(arg env_ns)/detected_points"/>
+  </node>
+  </group>
+  
+  <group if="$(arg start_e_lite)"> 
+  <!-- explore_lite_node -->
+  <node pkg="explore_lite" type="explore" name="explore" respawn="true">
+    <param name="robot_base_frame" value="$(arg group_ns)/base_link"/>
+    <param name="costmap_topic" value="$(arg map_topic)"/>
+    <param name="costmap_updates_topic" value="$(arg map_topic)_updates"/>
+    <param name="visualize" value="true"/>
+    <param name="planner_frequency" value="2.0"/>
+    <param name="potential_scale" value="1.0"/>
+    <param name="orientation_scale" value="0.0"/>
+    <param name="gain_scale" value="3.0"/>
+    <param name="transform_tolerance" value="100.0"/>
+    <param name="min_frontier_size" value="$(arg mapping_delta)"/>
+    <param name="progress_timeout" value="2.0" />
+  </node>
+  </group>
+
+  <group if="$(arg start_hector)">
+  <!-- hector_exploration -->
+  <node pkg="hector_exploration_node" type="exploration_planner_node" name="hector_exploration_node" respawn="true">
+    <rosparam file="$(find pepper)/param/hector_costmap.yaml" command="load"/>
+    <param name="global_costmap/global_frame" value="$(arg env_ns)/map" />
+    <param name="global_costmap/robot_base_frame" value="$(arg group_ns)/base_link" />
+    <param name="global_costmap/observation_sources" value="scan" />
+    <param name="global_costmap/scan/sensor_frame" value="$(arg group_ns)/base_scan" />
+    <param name="global_costmap/scan/data_type" value="LaserScan" />
+    <param name="global_costmap/scan/topic" value="scan" />
+    <param name="global_costmap/scan/marking" value="true" />
+    <param name="global_costmap/scan/clearing" value="true" />
+    <remap from="map" to="$(arg map_topic)" />
+  </node>
+  </group>
+
+</group>
+
+</launch>
